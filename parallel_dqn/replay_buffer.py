@@ -2,9 +2,13 @@
 import random
 import threading
 from collections import deque, namedtuple
+from multiprocessing import Manager, Process
 
 import torch
 import numpy as np
+
+from utils.atomic_int import AtomicInteger
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # BUFFER_SIZE = int(1e5)  # replay buffer size
 # BATCH_SIZE = 64  # minibatch size
@@ -46,6 +50,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #     def get_batch_size(cls):
 #         return BATCH_SIZE
 
+
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
@@ -60,14 +65,29 @@ class ReplayBuffer:
         """
         self.action_size = action_size
         self.memory = deque(maxlen=buffer_size)
+
         self.batch_size = batch_size
         self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+        #self.shm = shared_memory.create_shared_memory((), num_processes)
         self.seed = random.seed(seed)
+      #  self.N = AtomicInteger(-1)
+
 
     def add(self, state, action, reward, next_state, done):
-        """Add a new experience to memory."""
+        # e = (state, action, reward, next_state, done)
+        # shared_memory.write_to_shared_memory(self.N.inc(), e, self.shm, self.experience)
+
+       #  """Add a new experience to memory."""
         e = self.experience(state, action, reward, next_state, done)
         self.memory.append(e)
+       #
+       #  if len(self.memory) >= self.buffer_size:
+       #      self.memory.pop(0)
+       #
+       #
+       #  self.memory.append(e)
+       #
+       #  #self.memory.append(e)
 
     def sample(self, device):
         """Randomly sample a batch of experiences from memory."""

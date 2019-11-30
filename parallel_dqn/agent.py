@@ -23,11 +23,15 @@ UPDATE_EVERY = 5  # how often to update the network
 
 class ParallelDQNAgent(Agent):
 
-    def __init__(self, id, state_size, action_size, qs, seed=0):
+    def __init__(self, id, send_conn, state_size, action_size, grads_q, current_q, seed=0):
         self.id = id
-        self.qs = qs
+        self.grads_q = grads_q
         self.state_size = state_size
         self.action_size = action_size
+        self.send_conn = send_conn
+        self.current_q = current_q
+
+        self.memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE, seed)
 
         self.seed = random.seed(seed)
 
@@ -37,13 +41,12 @@ class ParallelDQNAgent(Agent):
 
        # self.ps.initialize_gradients(self.id, self.qnetwork_local.get_gradients)
 
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
+        self.optimizer = optim.SGD(self.qnetwork_local.parameters(), lr=LR)
 
         #  self.qnetwork.train() # Sets network in training mode
 
-       # self.memory = Memory()
         # Local memory
-        self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
+   #     self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
 
@@ -76,14 +79,34 @@ class ParallelDQNAgent(Agent):
 
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
+     #   self.conn.send((state, action, reward, next_state, done))
         self.memory.add(state, action, reward, next_state, done)
 
-        self.soft_update(self.qnetwork_local.parameters(), ParameterServer.get_parameters(), TAU)
+# lock
+        try:
+            params = self.current_q.get(False)
+            self.current_q.put(params)
+
+
+            for local, server in zip(self.qnetwork_local.parameters(), params):
+                local.data.copy_(server.data)
+
+            if self.t_step % UPDATE_EVERY == 0:
+                for local, server in zip(self.qnetwork_target.parameters(), params):
+                    local.data.copy_(server.data)
+        except:
+            pass
+
+    #    for local, server in zip(self.qnetwork_target.parameters(), ParameterServer.get_parameters()):
+     #       local.data.copy_(server.data)
+       # self.qnetwork_local = ParameterServer.model
+
+        #self.soft_update(self.qnetwork_local.parameters(), ParameterServer.get_parameters(), TAU)
         #self.qnetwork_local.set_weights(ParameterServer.get_weights())
 
         # Learn every UPDATE_EVERY time steps.
         self.t_step += 1
-       # if self.t_step % UPDATE_EVERY == 0 :
+
             # If enough samples are available in memory, get random subset and learn
         if len(self.memory) > BATCH_SIZE:
             experiences = self.memory.sample(device)
@@ -114,12 +137,49 @@ class ParallelDQNAgent(Agent):
         loss.backward()
         self.optimizer.step()
 
-        # ------------------- update target network ------------------- #
-        self.qs[self.id].put((self.id, self.qnetwork_local.get_gradients()))
-        ParameterServer.apply_gradients()
+        # existing_shm = shared_memory.SharedMemory(name='psm_21467_46075')
+        # c = np.ndarray((6,), dtype=np.int64, buffer=existing_shm.buf)
 
-        if self.t_step % UPDATE_EVERY == 0:
-            self.soft_update(self.qnetwork_target.parameters(),  ParameterServer.get_parameters(), TAU)
+        # ------------------- update target network ------------------- #
+       # self.qs[self.id].put((self.id, self.qnetwork_local.get_gradients()))
+       # ParameterServer.apply_gradients()
+
+       # ParameterServer.soft_update(self.qnetwork_local, TAU)
+
+      #  if ParameterServer.get_n:
+      #  self.soft_update(self.qnetwork_target.parameters(),  ParameterServer.get_parameters(), TAU)
+        #self.qnetwork_target = ParameterServer.model
+
+       # print(self.qnetwork_local.get_gradients())
+        buf = self.qnetwork_local.get_gradients()
+        self.grads_q.put((self.id, buf))
+
+
+
+        # while not self.update_q.empty():
+        #     try:
+        #         params = self.current_q.get(False)
+        #         #self.soft_update(params, self.qnetwork_target.parameters(), TAU)
+        #         for local, server in zip(self.qnetwork_target.parameters(), params):
+        #             local.data.copy_(server.data)
+        #     except:
+        #         pass
+
+        # ------------------- update target network ------------------- #
+
+
+
+      #  self.send_conn.close()
+
+       # if self.t_step % UPDATE_EVERY == 0:
+            #ParameterServer.apply_gradients()
+
+            #ParameterServer.soft_update(TAU)
+           # self.soft_update(ParameterServer.get_parameters(), self.qnetwork_target.parameters(), TAU)
+           #  existing_shm = shared_memory.SharedMemory(name='parameters')
+           #  c = np.ndarray(ParameterServer.shmsize, dtype=ParameterServer.shmtype, buffer=existing_shm.buf)
+       #     for local, server in zip(self.qnetwork_target.parameters(), c):
+        #        local.data.copy_(server.data)
 
     # self.Q[next_state][action] = (1 - self.learning_rate) * self.Q[state][action] + self.learning_rate * (reward + self.discounting_factor * np.argmax(self.Q[next_state]))
     def soft_update(self, local_model, target_model, tau):
