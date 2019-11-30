@@ -12,6 +12,7 @@ from parallel_dqn.model import QNetwork
 from parallel_dqn.replay_buffer import ReplayBuffer
 import torch.multiprocessing as mp
 
+from parallel_dqn.utils import copy_parameters
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -23,26 +24,27 @@ TAU = 1e-3  # for soft update of target parameters
 
 UPDATE_EVERY = 5  # how often to update the network
 
-class ParallelDQNWorker(Process):
+class ParallelDQNWorker(mp.Process):
 
-    def __init__(self, id, env, send_conn, state_size, action_size, grads_q, current_q, n_episodes, lr, gamma, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(ParallelDQNWorker, self).__init__()
         self.id = id
+        self.ps = ps
         self.env = env
-        self.grads_q = grads_q
         self.state_size = state_size
         self.action_size = action_size
-        self.send_conn = send_conn
-        self.current_q = current_q
         self.n_episodes = n_episodes
         self.gamma = gamma
 
+        # TODO: It would probably be better if this was shared between all processes
+        # However, that might hurt performance
+        # Could instead maybe create one global memory and send a few experiences in batches?
         self.memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE, 0)
 
         self.qnetwork_local = QNetwork(state_size, action_size).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size).to(device)
 
-        self.optimizer = optim.SGD(self.qnetwork_local.parameters(), lr=lr)
+        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
 
         self.t_step = 0
         self.max_t = max_t
@@ -65,13 +67,8 @@ class ParallelDQNWorker(Process):
             # Turn the state into a tensor
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
 
-            # Takes the network out of training mode in order to generate action based on state
-            #   self.qnetwork.eval()
-
             with torch.no_grad():
                 action_values = self.qnetwork_local(state)  # Make choice based on local network
-
-            #      self.qnetwork.train()
 
             return np.argmax(action_values.cpu().data.numpy())
         else:
@@ -79,37 +76,17 @@ class ParallelDQNWorker(Process):
 
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
-        #   self.conn.send((state, action, reward, next_state, done))
         self.memory.add(state, action, reward, next_state, done)
 
-        # lock
-        try:
-            params = self.current_q.get(False)
-            self.current_q.put(params)
+        # Update local parameters with that of parameter server
+        copy_parameters(self.ps.get_parameters(), self.qnetwork_local.parameters())
 
-
-            for local, server in zip(self.qnetwork_local.parameters(), params):
-                local.data.copy_(server.data)
-
-            if self.t_step % UPDATE_EVERY == 0:
-                for local, server in zip(self.qnetwork_target.parameters(), params):
-                    local.data.copy_(server.data)
-        except:
-            pass
-
-        #    for local, server in zip(self.qnetwork_target.parameters(), ParameterServer.get_parameters()):
-        #       local.data.copy_(server.data)
-        # self.qnetwork_local = ParameterServer.model
-
-        # self.soft_update(self.qnetwork_local.parameters(), ParameterServer.get_parameters(), TAU)
-        # self.qnetwork_local.set_weights(ParameterServer.get_weights())
-
-        # Learn every UPDATE_EVERY time steps.
+        # Increment local timer
         self.t_step += 1
 
         # If enough samples are available in memory, get random subset and learn
         if len(self.memory) > BATCH_SIZE:
-            experiences = self.memory.sample(device)
+            experiences = self.memory.sample()
             self.learn(experiences)
 
     def learn(self, experiences):
@@ -137,87 +114,11 @@ class ParallelDQNWorker(Process):
         loss.backward()
         self.optimizer.step()
 
-        # existing_shm = shared_memory.SharedMemory(name='psm_21467_46075')
-        # c = np.ndarray((6,), dtype=np.int64, buffer=existing_shm.buf)
+        self.ps.record_gradients(self.id, self.qnetwork_local.get_gradients())
 
-        # ------------------- update target network ------------------- #
-        # self.qs[self.id].put((self.id, self.qnetwork_local.get_gradients()))
-        # ParameterServer.apply_gradients()
-
-        # ParameterServer.soft_update(self.qnetwork_local, TAU)
-
-        #  if ParameterServer.get_n:
-        #  self.soft_update(self.qnetwork_target.parameters(),  ParameterServer.get_parameters(), TAU)
-        # self.qnetwork_target = ParameterServer.model
-
-        # print(self.qnetwork_local.get_gradients())
-        buf = self.qnetwork_local.get_gradients()
-        self.grads_q.put((self.id, buf))
-
-
-
-        # while not self.update_q.empty():
-        #     try:
-        #         params = self.current_q.get(False)
-        #         #self.soft_update(params, self.qnetwork_target.parameters(), TAU)
-        #         for local, server in zip(self.qnetwork_target.parameters(), params):
-        #             local.data.copy_(server.data)
-        #     except:
-        #         pass
-
-        # ------------------- update target network ------------------- #
-
-
-
-    #  self.send_conn.close()
-
-    # if self.t_step % UPDATE_EVERY == 0:
-    # ParameterServer.apply_gradients()
-
-    # ParameterServer.soft_update(TAU)
-    # self.soft_update(ParameterServer.get_parameters(), self.qnetwork_target.parameters(), TAU)
-    #  existing_shm = shared_memory.SharedMemory(name='parameters')
-    #  c = np.ndarray(ParameterServer.shmsize, dtype=ParameterServer.shmtype, buffer=existing_shm.buf)
-    #     for local, server in zip(self.qnetwork_target.parameters(), c):
-    #        local.data.copy_(server.data)
-
-    # self.Q[next_state][action] = (1 - self.learning_rate) * self.Q[state][action] + self.learning_rate * (reward + self.discounting_factor * np.argmax(self.Q[next_state]))
-    def soft_update(self, local_model, target_model, tau):
-        """Soft update model parameters.
-        θ_target = τ*θ_local + (1 - τ)*θ_target
-        Params
-        ======
-            local_model (PyTorch model): weights will be copied from
-            target_model (PyTorch model): weights will be copied to
-            tau (float): interpolation parameter
-        """
-        for target_param, local_param in zip(target_model, local_model):
-            target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
-
-    # def run(self):
-    #     state = self.env.reset()
-    #     trajectory = []  # [[s, a, r, s', done], [], ...]
-    #     episode_reward = 0
-    #
-    #     while self.global_episode.value < self.GLOBAL_MAX_EPISODE:
-    #         action = self.get_action(state)
-    #         next_state, reward, done, _ = self.env.step(action)
-    #         trajectory.append([state, action, reward, next_state, done])
-    #         episode_reward += reward
-    #
-    #         if done:
-    #             with self.global_episode.get_lock():
-    #                 self.global_episode.value += 1
-    #             print(self.name + " | episode: " + str(self.global_episode.value) + " " + str(episode_reward))
-    #
-    #             self.update_global(trajectory)
-    #             self.sync_with_global()
-    #
-    #             trajectory = []
-    #             episode_reward = 0
-    #             state = self.env.reset()
-    #         else:
-    #             state = next_state
+        # Learn every UPDATE_EVERY time steps.
+        if self.t_step % UPDATE_EVERY == 0:
+            copy_parameters(self.ps.get_parameters(), self.qnetwork_target.parameters())
 
     def run(self):
         scores = []

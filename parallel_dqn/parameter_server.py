@@ -1,85 +1,74 @@
 from multiprocessing import Process
-
+import torch.multiprocessing as mp
 import numpy as np
 import torch
 
 from parallel_dqn.model import QNetwork
+from parallel_dqn.utils import copy_parameters
 
 UPDATE_EVERY = 5
 LR = 5e-4  # learning rate
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-class ParameterServer(Process):
+class SharedGradients():
+    def __init__(self, num_threads, params):
+        self.gradients = []
+        arr = np.array([np.array(t) for t in [p.data for p in params]])
 
-    def __init__(self, q, current_q, conn, state_size, action_size, seed, num_threads):
-        self.q = q
-        self.current_q = current_q
-        self.conn = conn
-        self.num_threads = num_threads
+        for _ in range(num_threads):
+            grads = [torch.tensor(arr[i]) for i in range(arr.size)]
+            [g.share_memory_() for g in grads]
+            self.gradients.append(grads)
 
-        self.time = 1
+           # for g in grads:
 
-        self.model = QNetwork(state_size, action_size, seed).to(device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LR)
 
-     #   Array(ctypes.POINTER(type(ctypes.c_int)), 1)
-       # i = RawArray('d', (9, 2, 8))
-        #multiprocessing.Value('', ctypes.pointer(i))
+        # for g in self.gradients:
+        #     g.share_memory_()
 
-        #
-        # a = self.__class__.model.parameters()
-        # self.shm = shared_memory.SharedMemory(create=True, size=a.nbytes, name='parameters')
-        #
-        # b = np.ndarray(a.shape, dtype=a.dtype, buffer=self.shm.buf)
-        # b[:] = a[:]  # Copy the original data into shared memory
-        #
-        # self.__class__.shmtype = a.dtype
-        # self.__class__.shmsize = a.shape
+    def update(self, i, grads):
+        for tp, fp in zip(self.gradients[i], grads):
+            tp.data.copy_(torch.tensor(fp).data)
 
+    def get(self):
+        return [g for g in self.gradients]
+
+
+class ParameterServer(mp.Process):
+
+    def __init__(self, state_size, action_size, seed, num_threads, lr):
         super(ParameterServer, self).__init__()
 
-    def run(self):
-        grads = [None for _ in range(self.num_threads)]
-        while True:
-            i, msg = self.q.get()
-            self.time += 1
-            grads[i] = msg
+        self.global_steps = mp.Value('i', 0)
 
-            if self.time % UPDATE_EVERY == 0:
-                self.apply_gradients(grads)
-                #grads = []
+        self.model = QNetwork(state_size, action_size, seed)
+        self.model.share_memory()
+
+        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
+       # self.optimizer.share_memory()
+
+        self.gradients = SharedGradients(num_threads, self.model.parameters())
+
+    def record_gradients(self, i, gradients):
+        with self.global_steps.get_lock():
+            self.global_steps.value += 1
+
+        self.gradients.update(i, gradients)
+
+        if self.global_steps.value % UPDATE_EVERY == 0:
+            self.apply_gradients()
 
 
-
-    def apply_gradients(self, gradients):
-       # if N.inc() % 10 == 0:
-       # with lock:
-         #   gradients = []
-
-            # for q in cls.qs:
-            #     while not q.empty():
-            #         try:
-            #             id, arr = q.get(False)
-            #             gradients.append(arr)
-            #         except:
-            #             pass
-      #  print(self.grads)
-        gradients = [g for g in gradients if g is not None]
+    def apply_gradients(self):
         summed_gradients = [
             np.stack(gradient_zip).sum(axis=0)
-            for gradient_zip in zip(*gradients)
+            for gradient_zip in zip(*self.gradients.get())
         ]
         self.optimizer.zero_grad()
         self.model.set_gradients(summed_gradients)
         self.optimizer.step()
 
-        # for q in self.update_qs:
-        #     q.put([p for p in self.model.parameters()])
-        while not self.current_q.empty():
-            try:
-                self.current_q.get(False)
-            except:
-                pass
 
-        self.current_q.put([p for p in self.model.parameters()])
+    def get_parameters(self):
+       return self.model.parameters()
+

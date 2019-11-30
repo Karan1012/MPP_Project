@@ -5,12 +5,13 @@ import torch.nn.functional as F
 import torch.multiprocessing as mp
 from torch.distributions import Categorical
 
+from utils.device import device
+
 class A3CWorker(mp.Process):
 
     def __init__(self, id, env, gamma, global_value_network, global_policy_network, global_value_optimizer,
                  global_policy_optimizer, global_episode, GLOBAL_MAX_EPISODE):
         super(A3CWorker, self).__init__()
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.name = "w%i" % id
 
         self.env = env
@@ -33,7 +34,7 @@ class A3CWorker(mp.Process):
         self.sync_with_global()
 
     def get_action(self, state):
-        state = torch.FloatTensor(state).to(self.device)
+        state = torch.FloatTensor(state).to(device)
         logits = self.local_policy_network.forward(state)
         dist = F.softmax(logits, dim=0)
         probs = Categorical(dist)
@@ -41,17 +42,17 @@ class A3CWorker(mp.Process):
         return probs.sample().cpu().detach().item()
 
     def compute_loss(self, trajectory):
-        states = torch.FloatTensor([sars[0] for sars in trajectory]).to(self.device)
-        actions = torch.LongTensor([sars[1] for sars in trajectory]).view(-1, 1).to(self.device)
-        rewards = torch.FloatTensor([sars[2] for sars in trajectory]).to(self.device)
-        next_states = torch.FloatTensor([sars[3] for sars in trajectory]).to(self.device)
-        dones = torch.FloatTensor([sars[4] for sars in trajectory]).view(-1, 1).to(self.device)
+        states = torch.FloatTensor([sars[0] for sars in trajectory]).to(device)
+        actions = torch.LongTensor([sars[1] for sars in trajectory]).view(-1, 1).to(device)
+        rewards = torch.FloatTensor([sars[2] for sars in trajectory]).to(device)
+        next_states = torch.FloatTensor([sars[3] for sars in trajectory]).to(device)
+        dones = torch.FloatTensor([sars[4] for sars in trajectory]).view(-1, 1).to(device)
 
         # compute value target
         discounted_rewards = [torch.sum(torch.FloatTensor([self.gamma ** i for i in range(rewards[j:].size(0))]) \
                                         * rewards[j:]) for j in
                               range(rewards.size(0))]  # sorry, not the most readable code.
-        value_targets = rewards.view(-1, 1) + torch.FloatTensor(discounted_rewards).view(-1, 1).to(self.device)
+        value_targets = rewards.view(-1, 1) + torch.FloatTensor(discounted_rewards).view(-1, 1).to(device)
 
         # compute value loss
         values = self.local_value_network.forward(states)
