@@ -1,14 +1,9 @@
-import ctypes
+from multiprocessing import Process
 
-import threading
-from multiprocessing.sharedctypes import Array, RawArray, synchronized
-
-from multiprocessing import Process, Manager
-import torch
 import numpy as np
-from parallel_dqn.model import QNetwork
-from utils.atomic_int import AtomicInteger
+import torch
 
+from parallel_dqn.model import QNetwork
 
 UPDATE_EVERY = 5
 LR = 5e-4  # learning rate
@@ -16,9 +11,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class ParameterServer(Process):
-    model = None
-    optimizer = None
-
 
     def __init__(self, q, current_q, conn, state_size, action_size, seed, num_threads):
         self.q = q
@@ -29,9 +21,6 @@ class ParameterServer(Process):
         self.time = 1
 
         self.model = QNetwork(state_size, action_size, seed).to(device)
-      #  self.__class__.qs = qs
-      #  self.__class__.num_threads = num_threads
-
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=LR)
 
      #   Array(ctypes.POINTER(type(ctypes.c_int)), 1)
@@ -61,9 +50,6 @@ class ParameterServer(Process):
                 self.apply_gradients(grads)
                 #grads = []
 
-    # def initialize_gradients(self, i, gradients):
-    #     pass
-    #   #  self.gradients[i] = gradients
 
 
     def apply_gradients(self, gradients):
@@ -97,26 +83,3 @@ class ParameterServer(Process):
                 pass
 
         self.current_q.put([p for p in self.model.parameters()])
-
-
-    @classmethod
-    def get_weights(cls):
-        return cls.model.get_weights()
-
-    # @classmethod
-    # def get_parameters(cls):
-    #     return cls.model.parameters()
-
-    @classmethod
-    def soft_update(cls, local_model, tau):
-        #local_model = cls.recv_conn.recv()
-        """Soft update model parameters.
-        θ_target = τ*θ_local + (1 - τ)*θ_target
-        Params
-        ======
-            local_model (PyTorch model): weights will be copied from
-            target_model (PyTorch model): weights will be copied to
-            tau (float): interpolation parameter
-        """
-        for target_param, local_param in zip(cls.model.parameters(), local_model):
-            target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)

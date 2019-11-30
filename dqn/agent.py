@@ -2,7 +2,7 @@ import numpy as np
 import random
 from collections import namedtuple, deque
 
-from agent import Agent
+from utils.agent import Agent
 from dqn.model import QNetwork
 
 import torch
