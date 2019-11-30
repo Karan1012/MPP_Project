@@ -1,16 +1,13 @@
-from multiprocessing import Process
-import torch.multiprocessing as mp
 import numpy as np
 import torch
+import torch.multiprocessing as mp
 
 from parallel_dqn.model import QNetwork
-from parallel_dqn.utils import copy_parameters
+from utils.shared_adam import SharedAdam
 
 UPDATE_EVERY = 5
-LR = 5e-4  # learning rate
 
-
-class SharedGradients():
+class SharedGradients:
     def __init__(self, num_threads, params):
         self.gradients = []
         arr = np.array([np.array(t) for t in [p.data for p in params]])
@@ -19,12 +16,6 @@ class SharedGradients():
             grads = [torch.tensor(arr[i]) for i in range(arr.size)]
             [g.share_memory_() for g in grads]
             self.gradients.append(grads)
-
-           # for g in grads:
-
-
-        # for g in self.gradients:
-        #     g.share_memory_()
 
     def update(self, i, grads):
         for tp, fp in zip(self.gradients[i], grads):
@@ -44,8 +35,8 @@ class ParameterServer(mp.Process):
         self.model = QNetwork(state_size, action_size, seed)
         self.model.share_memory()
 
-        self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
-       # self.optimizer.share_memory()
+        self.optimizer = SharedAdam(self.model.parameters(), lr=lr)
+        self.optimizer.share_memory()
 
         self.gradients = SharedGradients(num_threads, self.model.parameters())
 

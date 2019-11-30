@@ -21,7 +21,6 @@ BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64  # minibatch size
 
 TAU = 1e-3  # for soft update of target parameters
-
 UPDATE_EVERY = 5  # how often to update the network
 
 class ParallelDQNWorker(mp.Process):
@@ -39,12 +38,12 @@ class ParallelDQNWorker(mp.Process):
         # TODO: It would probably be better if this was shared between all processes
         # However, that might hurt performance
         # Could instead maybe create one global memory and send a few experiences in batches?
-        self.memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE, 0)
+        self.memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
 
         self.qnetwork_local = QNetwork(state_size, action_size).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size).to(device)
 
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
+        self.optimizer = optim.SGD(self.qnetwork_local.parameters(), lr=lr)
 
         self.t_step = 0
         self.max_t = max_t

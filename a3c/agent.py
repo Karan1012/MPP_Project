@@ -2,9 +2,10 @@ import torch
 import torch.multiprocessing as mp
 
 from a3c.model import ValueNetwork, PolicyNetwork
-from a3c.utils import SharedAdam
+
 from a3c.worker import A3CWorker
 from utils.agent import Agent
+from utils.shared_adam import SharedAdam
 
 
 class A3CAgent(Agent):
