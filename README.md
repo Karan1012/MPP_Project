@@ -6,7 +6,7 @@
 
 Create python virtual env (currently using Python 3.6 but other versions may work):
 ```bash
-python3 -m venv
+python3 -m venv venv
 ```
 
 Activate virtual env:
