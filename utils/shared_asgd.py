@@ -72,7 +72,6 @@ class SharedASGD(torch.optim.Optimizer):
                     raise RuntimeError('ASGD does not support sparse gradients')
                 state = self.state[p]
 
-
                 state['step'] += 1
 
                 if group['weight_decay'] != 0:

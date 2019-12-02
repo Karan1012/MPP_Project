@@ -129,7 +129,7 @@ class ParallelDQNWorker(mp.Process):
         loss.backward()
         self.optimizer.step()
 
-        self.ps.record_gradients([p for p in self.qnetwork_local.get_gradients()])
+        self.ps.record_gradients(self.qnetwork_local.get_gradients())
 
 
     def run(self):

@@ -10,8 +10,8 @@ from utils.shared_asgd import SharedASGD
 TAU = .2  # for soft update of target parameters
 
 class SharedGradients:
-    def __init__(self, num_threads):
-        self.gradients = [None for _ in range(num_threads)]
+    def __init__(self):
+        self.gradients = [] # [None for _ in range(num_threads)]
 
     # def initialize_gradient(self, params):
     #     arr = np.array([np.array(t) for t in [p.data for p in params]])
@@ -21,65 +21,83 @@ class SharedGradients:
     #         [g.share_memory_() for g in grads]
     #         self.gradients.append(grads)
 
-    def initialize(self, i, gradients):
-        grads = [gradients[i].clone().detach() for i in range(len(gradients))]
+    def initialize(self, gradients):
+        grads = [gradients.clone().detach() for i in range(len(gradients))]
         [g.share_memory_() for g in grads] # Store gradients in shared memory
-        self.gradients[i] = grads
+        self.gradients = grads
 
     def update(self, i, gradients):
         # for tp, fp in zip(self.gradients[i], grads):
         #     tp.data.copy_(torch.tensor(fp).data)
-        for tp, fp in zip(self.gradients[i], gradients):
-            tp.data.copy_(torch.tensor(fp).data)
+        for tp, fp in zip(self.gradients, gradients):
+            tp.data.add_(torch.tensor(fp).data)
 
-    def sum(self):
-        summed_gradients = [
-            np.stack(gradient_zip).sum(axis=0)
-            for gradient_zip in zip(*self.gradients)
-        ]
-        return summed_gradients
 
 # TODO: Fix to use Queue instead for performance as suggested by torch multiprocessing
 class ParameterServerShard:
     def __init__(self, params, lr):
         super(ParameterServerShard, self).__init__()
 
-       # self.lock = mp.Lock()
+        self.batch = mp.Queue()
 
         params = torch.nn.Parameter(params.clone().detach())
         params.share_memory_() # Store gradients in shared memory
-        self.parameters = [params]
+        self.parameters = params # [params]
 
-        self.optimizer = SharedASGD(self.parameters)
-       # self.optimizer = SharedAdam(self.parameters, lr=lr)
+       # self.optimizer = SharedASGD(self.parameters, lr=lr, t0=0)
+        self.optimizer = SharedAdam([self.parameters], lr=lr)
         self.optimizer.share_memory()
         self.optimizer.zero_grad()
 
-    # Need to fix with ASGD
-    def record_gradients(self, gradients):
-        self.set_gradients(gradients)
-        self.optimizer.step()
+    def sum(self, grads):
+        summed_gradients = [
+            np.stack(gradient_zip).sum(axis=0)
+            for gradient_zip in zip(*grads)
+        ]
+        return summed_gradients
 
-        # self.lock.acquire()  # TODO this makes things slow
-        # try:
-        #     # self.optimizer.zero_grad()
-        #     self.set_gradients(gradients)
-        #     self.optimizer.step()
-        # finally:
-        #     self.lock.release()
 
-    def update(self, gradients):
+    def update(self, gradients, time):
+        #self.soft_update(torch.tensor(gradients))
+        # self.batch.put(torch.tensor(gradients).share_memory_())
+        #
+        # if time % 10 == 0:
+        #     grads = []
+        #     while not self.batch.empty():
+        #         try:
+        #             grads.append(self.batch.get(False))
+        #         except:
+        #             break
+        #
+        #     if len(grads):
         self.optimizer.zero_grad()
-        self.set_gradients(gradients)
+        self.set_gradients(torch.tensor(gradients))  # sum(grads)/len(grads)
         self.optimizer.step()
+
 
     def set_gradients(self, gradients):
-        #for g, p in zip(gradients, self.parameters):
+        self.parameters.grad = gradients
+        # for g, p in zip(gradients, self.parameters[0]):
         #    if g is not None:
-        self.parameters[0].grad = torch.tensor(gradients)
+        #         p.grad = g
 
     def get(self):
-        return self.parameters[0]
+        return self.parameters
+
+    def soft_update(self, local_model):
+        tau = TAU
+        """Soft update model parameters.
+        θ_target = τ*θ_local + (1 - τ)*θ_target
+        Params
+        ======
+            local_model (PyTorch model): weights will be copied from
+            target_model (PyTorch model): weights will be copied to
+            tau (float): interpolation parameter
+        """
+       # for target_param, local_param in zip(self.parameters[0], local_model):
+        self.parameters.data.copy_(tau * local_model.data.detach() + (1.0 - tau) * self.parameters.data.detach())
+
+
 
 
 class ParameterServer(mp.Process):
@@ -89,7 +107,9 @@ class ParameterServer(mp.Process):
 
         # TODO: Figure out how to just create a tensor that can do ASGD without the model needed
         self.model = QNetwork(state_size, action_size, seed) # TODO remove
-        #self.model.share_memory()
+
+
+        self.time = mp.Value('i', 0)
 
         p = [p for p in self.model.parameters()]
         # params = [torch.nn.Parameter(p[i].clone().detach()) for i in range(len(p))]
@@ -114,8 +134,12 @@ class ParameterServer(mp.Process):
  # Need to fixwith ASGD
     # How to process asynchronously? Also do mini-batches
     def record_gradients(self, gradients):
+        #with self.time.get_lock():
+        # TODO just create this as a tensor instead, it works better
+        self.time.value += 1
+
         for shard, g in zip(self.shards, gradients):
-            shard.update(g)
+            shard.update(g, self.time.value)
 
     # def set_gradients(self, gradients):
     #     for g, p in zip(gradients, self.parameters):
