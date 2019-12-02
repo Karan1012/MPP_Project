@@ -21,7 +21,7 @@ class ParallelDQNAgent(Agent):
                       action_size=env.action_space.n, n_episodes=global_max_episode, lr=lr, gamma=gamma, update_every=UPDATE_EVERY) for id in range(num_threads)]
 
     def train(self):
-        self.ps.start()
+       # self.ps.start()
 
         [worker.start() for worker in self.workers]
         [worker.join() for worker in self.workers]
