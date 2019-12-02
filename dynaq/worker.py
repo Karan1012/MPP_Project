@@ -73,17 +73,10 @@ class DynaQWorker(mp.Process):
         self.world_model = EnvModelNetwork(state_size, action_size).to(device)
         self.world_optimizer = optim.Adam(self.world_model.parameters(), lr=lr)
 
+        self.initial_states = []
+
 
     def act(self, state, eps=0.):
-        """Returns actions for given state as per current policy.
-
-        Params
-        ======
-            state (array_like): current state
-            eps (float): epsilon, for epsilon-greedy action selection
-        """
-
-        # Epsilon-greedy action selection
         if random.random() > eps:
             # Turn the state into a tensor
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
@@ -122,7 +115,11 @@ class DynaQWorker(mp.Process):
             experiences = self.local_memory.sample(BATCH_SIZE)
             self.learn(experiences)
 
+            experiences = self.local_memory.sample(BATCH_SIZE)
             self.learn_world(experiences)
+
+        if self.t_step % 1000 == 0:
+            print("predicting on world")
             self.planning()
 
         # Learn every UPDATE_EVERY time steps.
@@ -176,13 +173,14 @@ class DynaQWorker(mp.Process):
 
         loss1 = F.mse_loss(out1, next_states)
         loss2 = F.mse_loss(out2, rewards)
-        loss3 = F.mse_loss(out3, dones)
+       # loss3 = F.mse_loss(out3, dones)
+        loss3 = F.binary_cross_entropy(out3, dones)
         loss = loss1 + loss2 + loss3
         loss.backward()
 
         self.world_optimizer.step()
 
-
+       # print("World model loss: ", loss)
 
 
     def get_experience_as_tensor(self, e):
@@ -207,43 +205,76 @@ class DynaQWorker(mp.Process):
         return priority
 
     def planning(self):
-       # simulated_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
-        #state = self.simulated_env.reset()
 
-       # for i in range(BATCH_SIZE):
-        states, actions, rewards, next_states, dones = self.local_memory.sample(BATCH_SIZE)
+        simulated_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
 
-        a = [[random.choice(np.arange(self.action_size))] for _ in range(BATCH_SIZE)]
+        for i in range(5):
+            done = False
+            state = self.local_memory.get_one_state() #self.initial_states[random.choice(np.arange(len(self.initial_states)))]
+            num_steps = 0
 
-        a_ = torch.from_numpy(np.vstack(a)).long().to(device)
-            # while a == action:
-            #     a = random.choice(np.arange(self.action_size))
+            while not done:
+                num_steps += 1
+                action = random.choice(np.arange(self.action_size))
 
-        act = self.world_model.encode_action(a_)
+                s_ = torch.from_numpy(np.vstack([state])).to(device)
+                a_ = self.world_model.encode_action(torch.from_numpy(np.vstack([[action]])).to(device))
 
-        with torch.no_grad():
-            next_state, reward, done = self.world_model(states, act)
+                with torch.no_grad():
+                    next_state, reward, done_ = self.world_model(s_, a_)
 
-            #next_state, reward, done, _ = self.world_model.
-            #experience = self.local_memory.get_one_experience()
+                #done = F.softmax(done_)[0][0]
+                done = True if np.asarray(done_)[0][0] >= .5 else False
 
-           # states, actions, rewards, next_states, dones = experiences
-            #state = self.initial_states[random.choice(np.arange(len(self.initial_states)))]
-            # action = random.choice(np.arange(self.action_size))
-            #
-            # action_values = self.get_action_values(experience.state)
-            # reward = action_values[action]
+                simulated_memory.add(state, action, reward[0][0], next_state[0], done)
 
-            #simulated_memory.add(states, a, reward, next_state, done)
+                state = next_state
 
-            # if done:
-            #     state = self.simulated_env.reset()
-            # else:
-            #     state = next_state
+                if num_steps > 100:
+                    done = True
 
-     #   experiences = simulated_memory.sample(BATCH_SIZE)
-        experiences = (states, actions, rewards, next_states, dones)
+        l = min(BATCH_SIZE, len(simulated_memory))
+        experiences = simulated_memory.sample(l)
         self.learn(experiences)
+
+
+     #   # simulated_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
+     #    #state = self.simulated_env.reset()
+     #
+     #   # for i in range(BATCH_SIZE):
+     #    states, actions, rewards, next_states, dones = self.local_memory.sample(BATCH_SIZE)
+     #
+     #    a = [[random.choice(np.arange(self.action_size))] for _ in range(BATCH_SIZE)]
+     #
+     #    a_ = torch.from_numpy(np.vstack(a)).long().to(device)
+     #        # while a == action:
+     #        #     a = random.choice(np.arange(self.action_size))
+     #
+     #    act = self.world_model.encode_action(a_)
+     #
+     #    with torch.no_grad():
+     #        next_state, reward, done = self.world_model(states, act)
+     #
+     #        #next_state, reward, done, _ = self.world_model.
+     #        #experience = self.local_memory.get_one_experience()
+     #
+     #       # states, actions, rewards, next_states, dones = experiences
+     #        #state = self.initial_states[random.choice(np.arange(len(self.initial_states)))]
+     #        # action = random.choice(np.arange(self.action_size))
+     #        #
+     #        # action_values = self.get_action_values(experience.state)
+     #        # reward = action_values[action]
+     #
+     #        #simulated_memory.add(states, a, reward, next_state, done)
+     #
+     #        # if done:
+     #        #     state = self.simulated_env.reset()
+     #        # else:
+     #        #     state = next_state
+     #
+     # #   experiences = simulated_memory.sample(BATCH_SIZE)
+     #    experiences = (states, actions, rewards, next_states, dones)
+     #    self.learn(experiences)
 
     def planning1(self, state, action, next_state, reward, done):
         # feed the model with experience
@@ -295,6 +326,7 @@ class DynaQWorker(mp.Process):
         eps = self.eps_start  # initialize epsilon
         for i_episode in range(1, self.n_episodes + 1):
             state = self.env.reset()
+            self.initial_states.append(state)
             score = 0
             for t in range(self.max_t):
                 action = self.act(state, eps)

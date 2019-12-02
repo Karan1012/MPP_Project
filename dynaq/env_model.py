@@ -25,10 +25,14 @@ class EnvModelNetwork(nn.Module):
         units = fc2_units + 1
         self.fc2 = nn.Linear(units, units)
 
+        self.fch = nn.Linear(units, units)
+
 
         self.fc3 = nn.Linear(units, state_size)
         self.fc4 = nn.Linear(units, 1)
         self.fc5 = nn.Linear(units, 1)
+
+        self.out_act = nn.Sigmoid()
 
     def one_hot_embedding(self, labels):
         """Embedding labels to one-hot form.
@@ -53,10 +57,12 @@ class EnvModelNetwork(nn.Module):
 
         xa = F.relu(self.fc1_a(action)) #one hot this
 
-        c = torch.cat((xs, xa), dim=1)
-        x = F.relu(self.fc2(c))
+        x = torch.cat((xs, xa), dim=1)
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fch(x))
 
-        return self.fc3(x), self.fc4(x), self.fc5(x)
+
+        return self.fc3(x), self.fc4(x), self.out_act(self.fc5(x))
 
     def get_gradients(self):
         grads = []
