@@ -66,7 +66,7 @@ class ParameterServerShard(mp.Process):
             gradients = []
             try:
                # while len(gradients) <= 10:
-                while True:
+                while not self.q.empty():
                     gradients.append(self.q.get(False))
                 #print("too many items getting queued")
 
@@ -74,6 +74,8 @@ class ParameterServerShard(mp.Process):
                 if not len(gradients):
                     gradients.append(self.q.get())
 
+            if not len(gradients):
+                gradients.append(self.q.get())
 
             local_grads = [g.clone() for g in gradients]
             for g in gradients:

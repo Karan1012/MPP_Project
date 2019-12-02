@@ -34,6 +34,13 @@ class ReplayBuffer:
         #     del x
         # # do somethings with x
 
+
+
+    def get_one_experience(self):
+        experiences = random.sample(self.memory, k=1)
+        return experiences[0]
+
+
     def sample(self, num):
         # perm = torch.randperm(tensor.size(0))
         # idx = perm[:k]

@@ -1,13 +1,16 @@
 import random
-from collections import deque
+from collections import deque, namedtuple
 from multiprocessing import Process
 
+import gym
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from matplotlib.pyplot import plot
 
+from dynaq.env_model import EnvModelNetwork
+from dynaq.priority import PriorityModel
 from parallel_dqn.model import QNetwork
 from parallel_dqn.replay_buffer import ReplayBuffer
 import torch.multiprocessing as mp
@@ -20,7 +23,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64  # minibatch size
 
-N = 10
+
+THETA = 0.0001
 
 class DynaQWorker(mp.Process):
 
@@ -35,21 +39,39 @@ class DynaQWorker(mp.Process):
         self.gamma = gamma
         self.update_every = update_every
 
+       # self.env_model = env_model
+
         # TODO: It would probably be better if this was shared between all processes
         # However, that might hurt performance
         # Could instead maybe create one global memory and send a few experiences in batches?
-        self.memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
+        self.local_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
+        self.simulated_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
+        self.initial_states = 0
+        #
+        # self.simulated_env = gym.make('LunarLander-v2')
+        # self.simulated_env.reset()
+
 
         self.qnetwork_local = QNetwork(state_size, action_size).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size).to(device)
 
-        self.optimizer = optim.SGD(self.qnetwork_local.parameters(), lr=lr)
+        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
+
+        self.model = PriorityModel()
 
         self.t_step = 0
         self.max_t = max_t
         self.eps_start = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay
+
+        self.env_model = EnvModelNetwork(state_size, action_size).to(device)
+
+        self.planning_steps = 10
+        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+
+        self.world_model = EnvModelNetwork(state_size, action_size).to(device)
+        self.world_optimizer = optim.Adam(self.world_model.parameters(), lr=lr)
 
 
     def act(self, state, eps=0.):
@@ -74,22 +96,40 @@ class DynaQWorker(mp.Process):
             return random.choice(np.arange(self.action_size))
 
     def step(self, state, action, reward, next_state, done):
+        # if t == 0:
+        #     self.initial_states.append(state)
+
         # Save experience in replay memory
-        self.memory.add(state, action, reward, next_state, done)
+        self.local_memory.add(state, action, reward, next_state, done)
 
         # Update local parameters with that of parameter server
-        copy_parameters(self.ps.get_parameters(), self.qnetwork_local.parameters())
+        #copy_parameters(self.ps.get_parameters(), self.qnetwork_local.parameters())
+        #summed_gradients = torch.tensor(self.ps.get_summed_gradients())
+
+        #self.qnetwork_local.set_gradients(self.ps.sync())
+        copy_parameters(self.ps.get(), self.qnetwork_local.parameters())
 
         # Increment local timer
         self.t_step += 1
 
+        # if self.t_step % MAX_LOCAL_MEMORY == 0:
+        #     self.global_memory.add(self.local_memory)
+
         # If enough samples are available in memory, get random subset and learn
-        if len(self.memory) > BATCH_SIZE:
-            experiences = self.memory.sample(BATCH_SIZE)
+        # Learn every UPDATE_EVERY time steps.
+        #if self.t_step % self.update_every == 0:
+        if self.t_step > BATCH_SIZE:
+            experiences = self.local_memory.sample(BATCH_SIZE)
             self.learn(experiences)
 
-            self.imagine_alternatives(N)
+            self.learn_world(experiences)
+            self.planning()
 
+        # Learn every UPDATE_EVERY time steps.
+        if self.t_step % self.update_every == 0: # TODO: Fix, need to make global memory first
+            #summed_gradients = torch.tensor(self.ps.get_summed_gradients()) # copy shared memory tensor back to local memory
+            #self.qnetwork_target.set_gradients(self.ps.sync())
+            copy_parameters(self.ps.get(), self.qnetwork_target.parameters())
 
     def learn(self, experiences):
         """Update value parameters using given batch of experience tuples.
@@ -116,16 +156,135 @@ class DynaQWorker(mp.Process):
         loss.backward()
         self.optimizer.step()
 
-        self.ps.record_gradients(self.id, self.qnetwork_local.get_gradients())
-
-        # Learn every UPDATE_EVERY time steps.
-        if self.t_step % self.update_every == 0:
-            copy_parameters(self.ps.get_parameters(), self.qnetwork_target.parameters())
+        self.ps.record_gradients(self.qnetwork_local.get_gradients())
 
 
-    def imagine_alternatives(self):
-        experiences = self.memory.sample(N)
+    def learn_world(self, experiences):
+        """Update value parameters using given batch of experience tuples.
+        Params
+        ======
+            experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
+            gamma (float): discount factor
+        """
         states, actions, rewards, next_states, dones = experiences
+
+        act = self.world_model.encode_action(actions)
+
+        self.world_optimizer.zero_grad()
+
+        out1, out2, out3 = self.world_model(states, act)
+
+        loss1 = F.mse_loss(out1, next_states)
+        loss2 = F.mse_loss(out2, rewards)
+        loss3 = F.mse_loss(out3, dones)
+        loss = loss1 + loss2 + loss3
+        loss.backward()
+
+        self.world_optimizer.step()
+
+
+
+
+    def get_experience_as_tensor(self, e):
+        states = torch.from_numpy(np.vstack([e.state])).float().to(device)
+        actions = torch.from_numpy(np.vstack([e.action])).long().to(device)
+        rewards = torch.from_numpy(np.vstack([e.reward])).float().to(device)
+        next_states = torch.from_numpy(np.vstack([e.next_state])).float().to(device)
+        dones = torch.from_numpy(np.vstack([e.done]).astype(np.uint8)).float().to(device)
+
+        return (states, actions, rewards, next_states, dones)
+
+    def get_action_values(self, state):
+        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            action_values = self.qnetwork_target(state)
+
+        return action_values.cpu().data.numpy()[0]
+
+    def get_delta(self, state, action, next_state, reward):
+        priority = reward + self.gamma * np.max(self.get_action_values(next_state)) - self.get_action_values(state)[action]
+        return priority
+
+    def planning(self):
+       # simulated_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
+        #state = self.simulated_env.reset()
+
+       # for i in range(BATCH_SIZE):
+        states, actions, rewards, next_states, dones = self.local_memory.sample(BATCH_SIZE)
+
+        a = [[random.choice(np.arange(self.action_size))] for _ in range(BATCH_SIZE)]
+
+        a_ = torch.from_numpy(np.vstack(a)).long().to(device)
+            # while a == action:
+            #     a = random.choice(np.arange(self.action_size))
+
+        act = self.world_model.encode_action(a_)
+
+        with torch.no_grad():
+            next_state, reward, done = self.world_model(states, act)
+
+            #next_state, reward, done, _ = self.world_model.
+            #experience = self.local_memory.get_one_experience()
+
+           # states, actions, rewards, next_states, dones = experiences
+            #state = self.initial_states[random.choice(np.arange(len(self.initial_states)))]
+            # action = random.choice(np.arange(self.action_size))
+            #
+            # action_values = self.get_action_values(experience.state)
+            # reward = action_values[action]
+
+            #simulated_memory.add(states, a, reward, next_state, done)
+
+            # if done:
+            #     state = self.simulated_env.reset()
+            # else:
+            #     state = next_state
+
+     #   experiences = simulated_memory.sample(BATCH_SIZE)
+        experiences = (states, actions, rewards, next_states, dones)
+        self.learn(experiences)
+
+    def planning1(self, state, action, next_state, reward, done):
+        # feed the model with experience
+        self.model.feed(state, action, next_state, reward)
+
+        # get the priority for current state action pair
+        priority = np.abs(self.get_delta(state, action, next_state, reward))
+
+        if priority > THETA:
+            self.model.insert(priority, state, action, next_state, reward)
+
+        # start planning
+        planning_step = 0
+
+        # planning for several steps,
+        # although keep planning until the priority queue becomes empty will converge much faster
+        while planning_step < self.planning_steps and not self.model.empty():
+            # get a sample with highest priority from the model
+            priority, state_, action_, next_state_, reward_ = self.model.sample()
+
+            # update the state action value for the sample
+           # delta = self.get_delta(state_, action_, next_state_, reward_)
+
+            #q_value[state_[0], state_[1], action_] += self.alpha * delta
+            e = self.experience(state_, action_, reward_, next_state, done)
+
+            self.learn(self.get_experience_as_tensor(e))
+
+            # deal with all the predecessors of the sample state
+            # for state_pre, action_pre, reward_pre in self.model.predecessor(state_):
+            #     priority = np.abs(self.get_delta(state_pre, action_pre, state_, reward_pre))
+            #
+            #     if priority > THETA:
+            #         self.model.insert(priority, state_pre, action_pre)
+
+            planning_step += 1
+
+        # for _ in range(N):
+        #     experiences = self.local_memory.sample(1)
+        #     self.learn(experiences)
+       # states, actions, rewards, next_states, dones = experiences
 
        # rewards, next_states =
 

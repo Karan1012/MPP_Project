@@ -1,0 +1,77 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class EnvModelNetwork(nn.Module):
+    """Actor (Policy) Model."""
+
+    def __init__(self, state_size, action_size, seed=0, fc1_units=64, fc2_units=64):
+        """Initialize parameters and build model.
+        Params
+        ======
+            state_size (int): Dimension of each state
+            action_size (int): Dimension of each action
+            seed (int): Random seed
+            fc1_units (int): Number of nodes in first hidden layer
+            fc2_units (int): Number of nodes in second hidden layer
+        """
+        super(EnvModelNetwork, self).__init__()
+        self.seed = torch.manual_seed(seed)
+        self.fc1_s = nn.Linear(state_size, fc1_units)
+        self.fc1_a = nn.Linear(action_size, 1)
+
+        self.action_size = action_size
+
+        units = fc2_units + 1
+        self.fc2 = nn.Linear(units, units)
+
+
+        self.fc3 = nn.Linear(units, state_size)
+        self.fc4 = nn.Linear(units, 1)
+        self.fc5 = nn.Linear(units, 1)
+
+    def one_hot_embedding(self, labels):
+        """Embedding labels to one-hot form.
+
+        Args:
+          labels: (LongTensor) class labels, sized [N,].
+          num_classes: (int) number of classes.
+
+        Returns:
+          (tensor) encoded labels, sized [N, #classes].
+        """
+        y = torch.eye(self.action_size)
+        return torch.tensor([y[l] for l in labels])
+
+    def encode_action(self, action):
+        return torch.nn.functional.one_hot(torch.squeeze(action, 1), num_classes=self.action_size).float()
+
+    def forward(self, state, action):
+        """Build a network that maps state -> action values."""
+
+        xs = F.relu(self.fc1_s(state))
+
+        xa = F.relu(self.fc1_a(action)) #one hot this
+
+        c = torch.cat((xs, xa), dim=1)
+        x = F.relu(self.fc2(c))
+
+        return self.fc3(x), self.fc4(x), self.fc5(x)
+
+    def get_gradients(self):
+        grads = []
+        for p in self.parameters():
+            grad = None if p.grad is None else p.grad.data.cpu().numpy()
+            grads.append(grad)
+        return grads
+
+    def set_gradients(self, gradients):
+        for g, p in zip(gradients, self.parameters()):
+            if g is not None:
+                p.grad = torch.from_numpy(g)
+
+    def get_weights(self):
+        return {k: v.cpu() for k, v in self.state_dict().items()}
+
+    def set_weights(self, weights):
+        self.load_state_dict(weights)
