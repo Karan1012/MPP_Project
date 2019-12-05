@@ -278,4 +278,4 @@ class DynaQWorker(mp.Process):
                 torch.save(self.qnetwork_local.state_dict(), 'checkpoint.pth')
                 break
 
-        plot(id, scores)
+        #plot(id, scores)
