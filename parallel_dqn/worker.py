@@ -2,7 +2,7 @@ import random
 import time
 from collections import deque
 from multiprocessing import Process
-
+TAU = 1e-3  # for soft update of target parameters
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -25,7 +25,7 @@ MAX_LOCAL_MEMORY = 10
 
 class ParallelDQNWorker(mp.Process):
 
-    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, target_network, optimizer, lock, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(ParallelDQNWorker, self).__init__()
         self.id = id
         self.ps = ps
@@ -40,11 +40,12 @@ class ParallelDQNWorker(mp.Process):
         self.local_memory = ReplayBuffer(env.action_space.n, BUFFER_SIZE, BATCH_SIZE)
 
         self.global_network = global_network
+        self.qnetwork_target = target_network
   #      self.global_optimizer = global_optimizer
 
 
        # self.qnetwork_local = QNetwork(state_size, action_size).to(device)
-        self.qnetwork_target = QNetwork(state_size, action_size).to(device)
+
 
         #self.ps.initialize_gradients(self.id, [p for p in self.qnetwork_target.parameters()])
 
@@ -56,13 +57,16 @@ class ParallelDQNWorker(mp.Process):
         self.eps_end = eps_end
         self.eps_decay = eps_decay
 
-     #   self.l = lock
+        self.optimizer = optimizer
 
-        self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=0.85)
+        self.l = lock
+
+
 
 
 
     def act(self, state, eps=0.):
+
         """Returns actions for given state as per current policy.
 
         Params
@@ -73,7 +77,7 @@ class ParallelDQNWorker(mp.Process):
 
         # Epsilon-greedy action selection
         if random.random() > eps:
-            # Turn the state into a tensor
+            # Turn the state into a tensor_
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
 
             with torch.no_grad():
@@ -109,17 +113,17 @@ class ParallelDQNWorker(mp.Process):
 
         # If enough samples are available in memory, get random subset and learn
         # Learn every UPDATE_EVERY time steps.
-        #if self.t_step % self.update_every == 0:
-        if self.t_step > BATCH_SIZE:
-            experiences = self.local_memory.sample(BATCH_SIZE)
-            self.learn(experiences)
+        if self.t_step % self.update_every == 0:
+            if self.t_step > BATCH_SIZE:
+                experiences = self.local_memory.sample(BATCH_SIZE)
+                self.learn(experiences)
 
         # Learn every UPDATE_EVERY time steps.
-        if self.t_step % self.update_every == 0: # TODO: Fix, need to make global memory first
+    #    if self.t_step % self.update_every == 0: # TODO: Fix, need to make global memory first
             #summed_gradients = torch.tensor(self.ps.get_summed_gradients()) # copy shared memory tensor back to local memory
             #self.qnetwork_target.set_gradients(self.ps.sync())
             #copy_parameters(self.ps.get(), self.qnetwork_target.parameters())
-            self.qnetwork_target.load_state_dict(self.global_network.state_dict())
+      #      self.qnetwork_target.load_state_dict(self.global_network.state_dict())
             # self.l.acquire()
             # try:
             #     self.qnetwork_target.load_state_dict(self.global_network.state_dict())
@@ -129,6 +133,7 @@ class ParallelDQNWorker(mp.Process):
 
 
     def learn(self, experiences):
+        #self.l
         """Update value parameters using given batch of experience tuples.
         Params
         ======
@@ -137,39 +142,45 @@ class ParallelDQNWorker(mp.Process):
         """
         states, actions, rewards, next_states, dones = experiences
 
+        self.l.acquire()
+        try:
 
-        # Get max predicted Q values (for next states) from target model
-        Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
 
-        # Compute Q targets for current states
-        Q_targets = rewards + (self.gamma * Q_targets_next * (1 - dones))
+            # Get max predicted Q values (for next states) from target model
+            Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
 
-        # Get expected Q values from local model
-       # Q_expected = self.qnetwork_local(states).gather(1, actions)
-        Q_expected = self.global_network(states).gather(1, actions)
+            # Compute Q targets for current states
+            Q_targets = rewards + (self.gamma * Q_targets_next * (1 - dones))
 
-        # Compute loss
-        loss = F.mse_loss(Q_expected, Q_targets)
+            # Get expected Q values from local model
+           # Q_expected = self.qnetwork_local(states).gather(1, actions)
+            Q_expected = self.global_network(states).gather(1, actions)
 
-        # Minimize the loss
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+            # Compute loss
+            loss = F.mse_loss(Q_expected, Q_targets)
 
-        # ------------------- update target network ------------------- #
-       # self.soft_update(self.global_network, self.qnetwork_target, TAU)
+            # Minimize the loss
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
-    # def soft_update(self, local_model, target_model, tau):
-    #     """Soft update model parameters.
-    #     θ_target = τ*θ_local + (1 - τ)*θ_target
-    #     Params
-    #     ======
-    #         local_model (PyTorch model): weights will be copied from
-    #         target_model (PyTorch model): weights will be copied to
-    #         tau (float): interpolation parameter
-    #     """
-    #     for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-    #         target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
+            # ------------------- update target network ------------------- #
+            self.soft_update(self.global_network, self.qnetwork_target, TAU)
+
+        finally:
+            self.l.release()
+
+    def soft_update(self, local_model, target_model, tau):
+        """Soft update model parameters.
+        θ_target = τ*θ_local + (1 - τ)*θ_target
+        Params
+        ======
+            local_model (PyTorch model): weights will be copied from
+            target_model (PyTorch model): weights will be copied to
+            tau (float): interpolation parameter
+        """
+        for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+            target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
 
     def run(self):
