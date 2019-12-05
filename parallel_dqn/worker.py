@@ -98,7 +98,7 @@ class ParallelDQNWorker(mp.Process):
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
         self.local_memory.add(state, action, reward, next_state, done)
-        self.sync_with_global()
+     #   self.sync_with_global()
 
         # Update local parameters with that of parameter server
         #copy_parameters(self.ps.get_parameters(), self.qnetwork_local.parameters())
