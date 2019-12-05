@@ -25,10 +25,10 @@ MAX_LOCAL_MEMORY = 10
 
 class ParallelDQNWorker(mp.Process):
 
-    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, target_network, optimizer, lock, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, target_network, optimizer, lock, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(ParallelDQNWorker, self).__init__()
         self.id = id
-        self.ps = ps
+       # self.ps = ps
         self.env = env
         self.state_size = state_size
         self.action_size = action_size
@@ -44,7 +44,7 @@ class ParallelDQNWorker(mp.Process):
   #      self.global_optimizer = global_optimizer
 
 
-       # self.qnetwork_local = QNetwork(state_size, action_size).to(device)
+        self.local_network = QNetwork(state_size, action_size).to(device)
 
 
         #self.ps.initialize_gradients(self.id, [p for p in self.qnetwork_target.parameters()])
@@ -61,8 +61,12 @@ class ParallelDQNWorker(mp.Process):
 
         self.l = lock
 
+        self.sync_with_global()
 
 
+    def sync_with_global(self):
+        self.local_network.load_state_dict(self.global_network.state_dict())
+     #   self.local_policy_network.load_state_dict(self.global_policy_network.state_dict())
 
 
     def act(self, state, eps=0.):
@@ -81,7 +85,7 @@ class ParallelDQNWorker(mp.Process):
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
 
             with torch.no_grad():
-                action_values = self.global_network(state)  # Make choice based on local network
+                action_values = self.local_network(state)  # Make choice based on local network
 
             return np.argmax(action_values.cpu().data.numpy())
         else:
@@ -90,6 +94,7 @@ class ParallelDQNWorker(mp.Process):
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
         self.local_memory.add(state, action, reward, next_state, done)
+        self.sync_with_global()
 
         # Update local parameters with that of parameter server
         #copy_parameters(self.ps.get_parameters(), self.qnetwork_local.parameters())
@@ -130,6 +135,23 @@ class ParallelDQNWorker(mp.Process):
             # finally:
             #     self.l.release()
 
+    def compute_loss(self, experiences):
+        states, actions, rewards, next_states, dones = experiences
+
+        # Get max predicted Q values (for next states) from target model
+        Q_targets_next = self.qnetwork_target.forward(next_states).detach().max(1)[0].unsqueeze(1)
+
+        # Compute Q targets for current states
+        Q_targets = rewards + (self.gamma * Q_targets_next * (1 - dones))
+
+        # Get expected Q values from local model
+        # Q_expected = self.qnetwork_local(states).gather(1, actions)
+        Q_expected = self.local_network.forward(states).gather(1, actions)
+
+        # Compute loss
+        loss = F.mse_loss(Q_expected, Q_targets)
+        return loss
+
 
 
     def learn(self, experiences):
@@ -140,35 +162,30 @@ class ParallelDQNWorker(mp.Process):
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones = experiences
+        loss = self.compute_loss(experiences)
 
+        # self.l.acquire()
+        # try:
+
+
+
+            # ------------------- update target network ------------------- #
         self.l.acquire()
+
         try:
-
-
-            # Get max predicted Q values (for next states) from target model
-            Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
-
-            # Compute Q targets for current states
-            Q_targets = rewards + (self.gamma * Q_targets_next * (1 - dones))
-
-            # Get expected Q values from local model
-           # Q_expected = self.qnetwork_local(states).gather(1, actions)
-            Q_expected = self.global_network(states).gather(1, actions)
-
-            # Compute loss
-            loss = F.mse_loss(Q_expected, Q_targets)
-
             # Minimize the loss
             self.optimizer.zero_grad()
             loss.backward()
+            for local_params, global_params in zip(self.local_network.parameters(),
+                                                   self.global_network.parameters()):
+                global_params._grad = local_params._grad
             self.optimizer.step()
-
-            # ------------------- update target network ------------------- #
-            self.soft_update(self.global_network, self.qnetwork_target, TAU)
+            self.soft_update(self.local_network, self.qnetwork_target, TAU)
 
         finally:
             self.l.release()
+
+
 
     def soft_update(self, local_model, target_model, tau):
         """Soft update model parameters.
