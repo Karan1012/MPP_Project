@@ -43,6 +43,10 @@ class ParallelDQNWorker(mp.Process):
         self.qnetwork_target = target_network
   #      self.global_optimizer = global_optimizer
 
+     #   self.optimizer = optim.Adam(self.global_network.parameters(), lr=lr)
+     #   self.optimizer = optimizer
+
+        self.optimizer = optim.SGD(self.global_network.parameters(), lr=.01)
 
         self.local_network = QNetwork(state_size, action_size).to(device)
 
@@ -57,7 +61,7 @@ class ParallelDQNWorker(mp.Process):
         self.eps_end = eps_end
         self.eps_decay = eps_decay
 
-        self.optimizer = optimizer
+   #     self.optimizer = optimizer
 
         self.l = lock
 
@@ -85,7 +89,7 @@ class ParallelDQNWorker(mp.Process):
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
 
             with torch.no_grad():
-                action_values = self.local_network(state)  # Make choice based on local network
+                action_values = self.global_network(state)  # Make choice based on local network
 
             return np.argmax(action_values.cpu().data.numpy())
         else:
@@ -146,7 +150,7 @@ class ParallelDQNWorker(mp.Process):
 
         # Get expected Q values from local model
         # Q_expected = self.qnetwork_local(states).gather(1, actions)
-        Q_expected = self.local_network.forward(states).gather(1, actions)
+        Q_expected = self.global_network.forward(states).gather(1, actions)
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
@@ -161,27 +165,37 @@ class ParallelDQNWorker(mp.Process):
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
             gamma (float): discount factor
         """
-        loss = self.compute_loss(experiences)
+
+
 
         # self.l.acquire()
         # try:
 
         # Minimize the loss
+     #
 
-            # ------------------- update target network ------------------- #
-        self.l.acquire()
-        try:
-            self.optimizer.zero_grad()
-            loss.backward()
-            for local_params, global_params in zip(self.local_network.parameters(),
-                                                   self.global_network.parameters()):
-                global_params._grad = local_params._grad
-            self.optimizer.step()
 
-            self.soft_update(self.local_network, self.qnetwork_target, TAU)
 
-        finally:
-            self.l.release()
+        # ------------------- update target network ------------------- #
+
+        loss = self.compute_loss(experiences)
+
+        self.optimizer.zero_grad()
+
+        loss.backward()
+        # for local_params, global_params in zip(self.local_network.parameters(),
+        #                                        self.global_network.parameters()):
+        #     global_params._grad = local_params._grad
+        self.optimizer.step()
+
+        # self.l.acquire()
+        # try:
+        #
+        #
+        # finally:
+        #     self.l.release()
+
+        self.soft_update(self.global_network, self.qnetwork_target, TAU)
 
 
 

@@ -32,7 +32,7 @@ class ParallelDQNAgent(Agent):
 
         self.qnetwork_target = QNetwork(state_size, action_size) #.to(device)
         self.qnetwork_target.share_memory()
-
+        #
         self.optimizer = SharedAdam(self.qnetwork_global.parameters(), lr=lr)
         self.optimizer.share_memory()
 
