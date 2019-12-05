@@ -25,7 +25,7 @@ MAX_LOCAL_MEMORY = 10
 
 class ParallelDQNWorker(mp.Process):
 
-    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, global_optimizer, lock, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(ParallelDQNWorker, self).__init__()
         self.id = id
         self.ps = ps
@@ -39,19 +39,26 @@ class ParallelDQNWorker(mp.Process):
        # self.local_memory = mp.Queue()
         self.local_memory = ReplayBuffer(env.action_space.n, BUFFER_SIZE, BATCH_SIZE)
 
+        self.global_network = global_network
+        self.global_optimizer = global_optimizer
+
 
         self.qnetwork_local = QNetwork(state_size, action_size).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size).to(device)
 
         #self.ps.initialize_gradients(self.id, [p for p in self.qnetwork_target.parameters()])
 
-        self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
+       # self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
 
         self.t_step = 0
         self.max_t = max_t
         self.eps_start = eps_start
         self.eps_end = eps_end
         self.eps_decay = eps_decay
+
+        self.l = lock
+
+
 
 
     def act(self, state, eps=0.):
@@ -84,7 +91,8 @@ class ParallelDQNWorker(mp.Process):
         #summed_gradients = torch.tensor(self.ps.get_summed_gradients())
 
         #self.qnetwork_local.set_gradients(self.ps.sync())
-        copy_parameters(self.ps.get(), self.qnetwork_local.parameters())
+     #   copy_parameters(self.ps.get(), self.qnetwork_local.parameters())
+        self.qnetwork_local.load_state_dict(self.global_network.state_dict())
 
         # Increment local timer
         self.t_step += 1
@@ -103,7 +111,8 @@ class ParallelDQNWorker(mp.Process):
         if self.t_step % self.update_every == 0: # TODO: Fix, need to make global memory first
             #summed_gradients = torch.tensor(self.ps.get_summed_gradients()) # copy shared memory tensor back to local memory
             #self.qnetwork_target.set_gradients(self.ps.sync())
-            copy_parameters(self.ps.get(), self.qnetwork_target.parameters())
+            #copy_parameters(self.ps.get(), self.qnetwork_target.parameters())
+            self.qnetwork_target.load_state_dict(self.global_network.state_dict())
 
     def learn(self, experiences):
         """Update value parameters using given batch of experience tuples.
@@ -125,12 +134,25 @@ class ParallelDQNWorker(mp.Process):
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
-        # Minimize the loss
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
 
-        self.ps.record_gradients(self.qnetwork_local.get_gradients())
+        self.l.acquire()
+        try:
+            # Minimize the loss
+            self.global_optimizer.zero_grad()
+
+            loss.backward()
+            #  self.optimizer.step()
+
+            # self.ps.record_gradients(self.qnetwork_local.get_gradients())
+
+            for local_params, global_params in zip(self.qnetwork_local.parameters(),
+                                                   self.global_network.parameters()):
+                global_params._grad = local_params._grad
+            self.global_optimizer.step()
+        finally:
+            self.l.release()
+
+
 
 
     def run(self):
