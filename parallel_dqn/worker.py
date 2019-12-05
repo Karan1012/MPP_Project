@@ -153,7 +153,6 @@ class ParallelDQNWorker(mp.Process):
         return loss
 
 
-
     def learn(self, experiences):
         #self.l
         """Update value parameters using given batch of experience tuples.
@@ -167,23 +166,22 @@ class ParallelDQNWorker(mp.Process):
         # self.l.acquire()
         # try:
 
-
+        # Minimize the loss
+        self.optimizer.zero_grad()
+        loss.backward()
+        for local_params, global_params in zip(self.local_network.parameters(),
+                                               self.global_network.parameters()):
+            global_params._grad = local_params._grad
+        self.optimizer.step()
 
             # ------------------- update target network ------------------- #
         self.l.acquire()
-
         try:
-            # Minimize the loss
-            self.optimizer.zero_grad()
-            loss.backward()
-            for local_params, global_params in zip(self.local_network.parameters(),
-                                                   self.global_network.parameters()):
-                global_params._grad = local_params._grad
-            self.optimizer.step()
             self.soft_update(self.local_network, self.qnetwork_target, TAU)
 
         finally:
             self.l.release()
+
 
 
 
