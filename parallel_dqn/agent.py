@@ -1,5 +1,7 @@
 from multiprocessing import Lock
 
+
+
 from parallel_dqn.model import QNetwork
 from parallel_dqn.parameter_server import ParameterServer
 from parallel_dqn.replay_buffer import ReplayBuffer
@@ -7,6 +9,7 @@ from parallel_dqn.worker import ParallelDQNWorker
 from utils import device
 from utils.agent import Agent
 from utils.shared_adam import SharedAdam
+from utils.shared_asgd import SharedASGD
 
 UPDATE_EVERY = 5
 BUFFER_SIZE = int(1e5)  # replay buffer size
@@ -24,15 +27,17 @@ class ParallelDQNAgent(Agent):
 
         self.qnetwork_global = QNetwork(env.observation_space.shape[0], env.action_space.n) #.to(device)
         self.qnetwork_global.share_memory()
-        self.global_optimizer = SharedAdam(self.qnetwork_global.parameters(), lr=lr)
-        self.global_optimizer.share_memory()
+
+        #self.global_optimizer = SharedAdam(self.qnetwork_global.parameters(), lr=lr)
+       # self.global_optimizer = SharedASGD(self.qnetwork_global.parameters(), lr=lr)
+     #   self.global_optimizer.share_memory()
 
         self.lock = Lock()
 
 
         self.workers = [ParallelDQNWorker(id=id, env=env, ps=self.ps, state_size=env.observation_space.shape[0],
                       action_size=env.action_space.n, n_episodes=global_max_episode, lr=lr, gamma=gamma, update_every=UPDATE_EVERY,
-                                          global_network=self.qnetwork_global, global_optimizer=self.global_optimizer, lock=self.lock) for id in range(num_threads)]
+                                          global_network=self.qnetwork_global) for id in range(num_threads)]
 
     def train(self):
        # self.ps.start()

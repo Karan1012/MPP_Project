@@ -25,7 +25,7 @@ MAX_LOCAL_MEMORY = 10
 
 class ParallelDQNWorker(mp.Process):
 
-    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, global_optimizer, lock, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(ParallelDQNWorker, self).__init__()
         self.id = id
         self.ps = ps
@@ -40,10 +40,10 @@ class ParallelDQNWorker(mp.Process):
         self.local_memory = ReplayBuffer(env.action_space.n, BUFFER_SIZE, BATCH_SIZE)
 
         self.global_network = global_network
-        self.global_optimizer = global_optimizer
+  #      self.global_optimizer = global_optimizer
 
 
-        self.qnetwork_local = QNetwork(state_size, action_size).to(device)
+       # self.qnetwork_local = QNetwork(state_size, action_size).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size).to(device)
 
         #self.ps.initialize_gradients(self.id, [p for p in self.qnetwork_target.parameters()])
@@ -56,8 +56,9 @@ class ParallelDQNWorker(mp.Process):
         self.eps_end = eps_end
         self.eps_decay = eps_decay
 
-        self.l = lock
+     #   self.l = lock
 
+        self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=0.85)
 
 
 
@@ -76,7 +77,7 @@ class ParallelDQNWorker(mp.Process):
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
 
             with torch.no_grad():
-                action_values = self.qnetwork_local(state)  # Make choice based on local network
+                action_values = self.global_network(state)  # Make choice based on local network
 
             return np.argmax(action_values.cpu().data.numpy())
         else:
@@ -92,7 +93,13 @@ class ParallelDQNWorker(mp.Process):
 
         #self.qnetwork_local.set_gradients(self.ps.sync())
      #   copy_parameters(self.ps.get(), self.qnetwork_local.parameters())
-        self.qnetwork_local.load_state_dict(self.global_network.state_dict())
+     #    self.l.acquire()
+     #    try:
+     #        self.qnetwork_local.load_state_dict(self.global_network.state_dict())
+     #    finally:
+     #        self.l.release()
+
+
 
         # Increment local timer
         self.t_step += 1
@@ -113,6 +120,13 @@ class ParallelDQNWorker(mp.Process):
             #self.qnetwork_target.set_gradients(self.ps.sync())
             #copy_parameters(self.ps.get(), self.qnetwork_target.parameters())
             self.qnetwork_target.load_state_dict(self.global_network.state_dict())
+            # self.l.acquire()
+            # try:
+            #     self.qnetwork_target.load_state_dict(self.global_network.state_dict())
+            # finally:
+            #     self.l.release()
+
+
 
     def learn(self, experiences):
         """Update value parameters using given batch of experience tuples.
@@ -123,6 +137,7 @@ class ParallelDQNWorker(mp.Process):
         """
         states, actions, rewards, next_states, dones = experiences
 
+
         # Get max predicted Q values (for next states) from target model
         Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
 
@@ -130,29 +145,31 @@ class ParallelDQNWorker(mp.Process):
         Q_targets = rewards + (self.gamma * Q_targets_next * (1 - dones))
 
         # Get expected Q values from local model
-        Q_expected = self.qnetwork_local(states).gather(1, actions)
+       # Q_expected = self.qnetwork_local(states).gather(1, actions)
+        Q_expected = self.global_network(states).gather(1, actions)
 
         # Compute loss
         loss = F.mse_loss(Q_expected, Q_targets)
 
-        self.l.acquire()
-        try:
-            # Minimize the loss
-            self.global_optimizer.zero_grad()
+        # Minimize the loss
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
-            loss.backward()
-            #  self.optimizer.step()
+        # ------------------- update target network ------------------- #
+       # self.soft_update(self.global_network, self.qnetwork_target, TAU)
 
-            # self.ps.record_gradients(self.qnetwork_local.get_gradients())
-
-            for local_params, global_params in zip(self.qnetwork_local.parameters(),
-                                                   self.global_network.parameters()):
-                global_params._grad = local_params._grad
-            self.global_optimizer.step()
-        finally:
-            self.l.release()
-
-
+    # def soft_update(self, local_model, target_model, tau):
+    #     """Soft update model parameters.
+    #     θ_target = τ*θ_local + (1 - τ)*θ_target
+    #     Params
+    #     ======
+    #         local_model (PyTorch model): weights will be copied from
+    #         target_model (PyTorch model): weights will be copied to
+    #         tau (float): interpolation parameter
+    #     """
+    #     for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+    #         target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
 
     def run(self):
