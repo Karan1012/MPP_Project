@@ -46,7 +46,7 @@ class ParallelDQNWorker(mp.Process):
      #   self.optimizer = optim.Adam(self.global_network.parameters(), lr=lr)
      #   self.optimizer = optimizer
 
-        self.optimizer = optim.SGD(self.global_network.parameters(), lr=.01)
+        self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr)
 
         self.local_network = QNetwork(state_size, action_size).to(device)
 
