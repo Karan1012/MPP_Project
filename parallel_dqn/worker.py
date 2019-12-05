@@ -213,7 +213,7 @@ class ParallelDQNWorker(mp.Process):
             if np.mean(scores_window) >= 200.0:
                 print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
                                                                                              np.mean(scores_window)))
-                torch.save(self.qnetwork_local.state_dict(), 'checkpoint.pth')
+                torch.save(self.global_network.state_dict(), 'checkpoint.pth')
                 break
 
        # plot(id, scores)
