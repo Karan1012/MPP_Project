@@ -86,18 +86,6 @@ class ParameterServerShard(mp.Process):
 
 
     def update(self, gradients):
-        #self.soft_update(torch.tensor(gradients))
-        # self.batch.put(torch.tensor(gradients).share_memory_())
-        #
-        # if time % 10 == 0:
-        #     grads = []
-        #     while not self.batch.empty():
-        #         try:
-        #             grads.append(self.batch.get(False))
-        #         except:
-        #             break
-        #
-        #     if len(grads):
         self.optimizer.zero_grad()
         self.parameters.grad = gradients # sum(grads)/len(grads)
         self.optimizer.step()

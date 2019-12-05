@@ -16,6 +16,7 @@ from parallel_dqn.replay_buffer import ReplayBuffer
 import torch.multiprocessing as mp
 
 from parallel_dqn.utils import copy_parameters
+from utils.avg import AverageMeter
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -75,6 +76,8 @@ class DynaQWorker(mp.Process):
 
         self.initial_states = []
 
+        self.losses = AverageMeter()
+
 
     def act(self, state, eps=0.):
         if random.random() > eps:
@@ -114,11 +117,12 @@ class DynaQWorker(mp.Process):
         if self.t_step > BATCH_SIZE:
             experiences = self.local_memory.sample(BATCH_SIZE)
             self.learn(experiences)
+            self.learn_world(experiences)
 
             experiences = self.local_memory.sample(BATCH_SIZE)
             self.learn_world(experiences)
 
-        if self.t_step % 1000 == 0:
+        if self.t_step % 10000 == 0:
             print("predicting on world")
             self.planning()
 
@@ -176,9 +180,13 @@ class DynaQWorker(mp.Process):
        # loss3 = F.mse_loss(out3, dones)
         loss3 = F.binary_cross_entropy(out3, dones)
         loss = loss1 + loss2 + loss3
+
+
         loss.backward()
 
         self.world_optimizer.step()
+
+        self.losses.update(np.array(loss.data).reshape(1)[0])
 
        # print("World model loss: ", loss)
 
@@ -237,89 +245,6 @@ class DynaQWorker(mp.Process):
         experiences = simulated_memory.sample(l)
         self.learn(experiences)
 
-
-     #   # simulated_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
-     #    #state = self.simulated_env.reset()
-     #
-     #   # for i in range(BATCH_SIZE):
-     #    states, actions, rewards, next_states, dones = self.local_memory.sample(BATCH_SIZE)
-     #
-     #    a = [[random.choice(np.arange(self.action_size))] for _ in range(BATCH_SIZE)]
-     #
-     #    a_ = torch.from_numpy(np.vstack(a)).long().to(device)
-     #        # while a == action:
-     #        #     a = random.choice(np.arange(self.action_size))
-     #
-     #    act = self.world_model.encode_action(a_)
-     #
-     #    with torch.no_grad():
-     #        next_state, reward, done = self.world_model(states, act)
-     #
-     #        #next_state, reward, done, _ = self.world_model.
-     #        #experience = self.local_memory.get_one_experience()
-     #
-     #       # states, actions, rewards, next_states, dones = experiences
-     #        #state = self.initial_states[random.choice(np.arange(len(self.initial_states)))]
-     #        # action = random.choice(np.arange(self.action_size))
-     #        #
-     #        # action_values = self.get_action_values(experience.state)
-     #        # reward = action_values[action]
-     #
-     #        #simulated_memory.add(states, a, reward, next_state, done)
-     #
-     #        # if done:
-     #        #     state = self.simulated_env.reset()
-     #        # else:
-     #        #     state = next_state
-     #
-     # #   experiences = simulated_memory.sample(BATCH_SIZE)
-     #    experiences = (states, actions, rewards, next_states, dones)
-     #    self.learn(experiences)
-
-    def planning1(self, state, action, next_state, reward, done):
-        # feed the model with experience
-        self.model.feed(state, action, next_state, reward)
-
-        # get the priority for current state action pair
-        priority = np.abs(self.get_delta(state, action, next_state, reward))
-
-        if priority > THETA:
-            self.model.insert(priority, state, action, next_state, reward)
-
-        # start planning
-        planning_step = 0
-
-        # planning for several steps,
-        # although keep planning until the priority queue becomes empty will converge much faster
-        while planning_step < self.planning_steps and not self.model.empty():
-            # get a sample with highest priority from the model
-            priority, state_, action_, next_state_, reward_ = self.model.sample()
-
-            # update the state action value for the sample
-           # delta = self.get_delta(state_, action_, next_state_, reward_)
-
-            #q_value[state_[0], state_[1], action_] += self.alpha * delta
-            e = self.experience(state_, action_, reward_, next_state, done)
-
-            self.learn(self.get_experience_as_tensor(e))
-
-            # deal with all the predecessors of the sample state
-            # for state_pre, action_pre, reward_pre in self.model.predecessor(state_):
-            #     priority = np.abs(self.get_delta(state_pre, action_pre, state_, reward_pre))
-            #
-            #     if priority > THETA:
-            #         self.model.insert(priority, state_pre, action_pre)
-
-            planning_step += 1
-
-        # for _ in range(N):
-        #     experiences = self.local_memory.sample(1)
-        #     self.learn(experiences)
-       # states, actions, rewards, next_states, dones = experiences
-
-       # rewards, next_states =
-
-
     def run(self):
         scores = []
         scores_window = deque(maxlen=100)  # last 100 scores
@@ -328,6 +253,7 @@ class DynaQWorker(mp.Process):
             state = self.env.reset()
             self.initial_states.append(state)
             score = 0
+            self.losses.reset()
             for t in range(self.max_t):
                 action = self.act(state, eps)
                 # if do_render:
@@ -343,6 +269,7 @@ class DynaQWorker(mp.Process):
             eps = max(self.eps_end, self.eps_decay * eps)  # decrease epsilon
             if self.id == 0:
                 print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
+                print("World loss: ", self.losses.avg)
             if i_episode % 100 == 0:
                 print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
             if np.mean(scores_window) >= 200.0:

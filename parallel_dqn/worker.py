@@ -1,4 +1,5 @@
 import random
+import time
 from collections import deque
 from multiprocessing import Process
 
@@ -136,12 +137,14 @@ class ParallelDQNWorker(mp.Process):
         scores = []
         scores_window = deque(maxlen=100)  # last 100 scores
         eps = self.eps_start  # initialize epsilon
+        start_time = time.time()
         for i_episode in range(1, self.n_episodes + 1):
             state = self.env.reset()
             score = 0
             for t in range(self.max_t):
                 action = self.act(state, eps)
-               # if do_render:
+               # iclearn
+                # f do_render:
                #      self.env.render()
                 next_state, reward, done, _ = self.env.step(action)
                 self.step(state, action, reward, next_state, done)
@@ -152,10 +155,11 @@ class ParallelDQNWorker(mp.Process):
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
             eps = max(self.eps_end, self.eps_decay * eps)  # decrease epsilon
+            elapsed_time = time.time() - start_time
             if self.id == 0:
-                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
+                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}, Runtime: '.format(self.id, i_episode, np.mean(scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
             if i_episode % 100 == 0:
-                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
+                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}, Runtime: '.format(self.id, i_episode, np.mean(scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
             if np.mean(scores_window) >= 200.0:
                 print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
                                                                                              np.mean(scores_window)))
