@@ -11,7 +11,7 @@ from utils.agent import Agent
 from utils.shared_adam import SharedAdam
 from utils.shared_asgd import SharedASGD
 
-UPDATE_EVERY = 10
+UPDATE_EVERY = 5
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64  # minibatch size
 
@@ -44,7 +44,7 @@ class ParallelDQNAgent(Agent):
 
 
         self.workers = [ParallelDQNWorker(id=id, env=env, state_size=env.observation_space.shape[0],
-                      action_size=env.action_space.n, n_episodes=global_max_episode, lr=lr, gamma=gamma, update_every=UPDATE_EVERY,
+                      action_size=env.action_space.n, n_episodes=global_max_episode, lr=lr, gamma=gamma, update_every=UPDATE_EVERY + num_threads,
                                           global_network=self.qnetwork_global, target_network=self.qnetwork_target, optimizer=self.optimizer, lock=self.lock) for id in range(num_threads)]
 
     def train(self):
