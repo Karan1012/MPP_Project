@@ -48,7 +48,9 @@ class DynaQAgent(Agent):
     def train(self):
        # self.ps.start()
 
+
         [worker.start() for worker in self.workers]
-        self.real_worker.start()
+
+        self.real_worker.run()
+
         [worker.join() for worker in self.workers]
-        self.real_worker.join()
