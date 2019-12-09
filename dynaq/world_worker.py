@@ -285,7 +285,6 @@ class DynaQWorldWorker(mp.Process):
 
             if t_step % 100 == 0:
                 print("World loss: ", self.losses.avg)
-                self.planning()
                 self.losses.reset()
 
                # e = experiences.detach().copy()
@@ -294,6 +293,9 @@ class DynaQWorldWorker(mp.Process):
                 self.local_memory.add(state, action, next_state, reward, done)
 
             self.learn_world(states, actions, rewards, next_states, dones)
+
+           # if self.t_step > 1000:
+            self.planning()
 
 
           #  if t_step > 1000:
