@@ -99,7 +99,7 @@ class DynaQWorldWorker(mp.Process):
         #summed_gradients = torch.tensor(self.ps.get_summed_gradients())
 
         #self.qnetwork_local.set_gradients(self.ps.sync())
-        copy_parameters(self.ps.get(), self.global_network.parameters())
+      #  copy_parameters(self.ps.get(), self.global_network.parameters())
 
         # Increment local timer
         self.t_step += 1
@@ -251,28 +251,24 @@ class DynaQWorldWorker(mp.Process):
         self.learn(experiences)
 
     def run(self):
-        t_step = 1
+        t_step = 0
         while True:
+
+            experiences = self.q.get()
+
+            t_step += 1
 
             if t_step % 100 == 0:
                 print("World loss: ", self.losses.avg)
                 self.planning()
                 self.losses.reset()
 
-            experiences = None
-            try:
-
-                experiences = self.q.get()
-
-            except:
-                continue
                # e = experiences.detach().copy()
 
             for (state, action, next_state, reward, done) in  list(zip(*experiences)):
                 self.local_memory.add(state, action, next_state, reward, done)
 
             self.learn_world(experiences)
-            t_step += 1
 
 
           #  if t_step > 1000:

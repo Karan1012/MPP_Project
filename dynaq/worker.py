@@ -114,7 +114,9 @@ class DynaQWorker(mp.Process):
             if self.t_step > BATCH_SIZE:
                 experiences = self.local_memory.sample(BATCH_SIZE)
                 self.learn(experiences)
-                self.q.put(experiences)
+
+                if self.q.empty():
+                    self.q.put(experiences)
 
 
 
