@@ -30,10 +30,9 @@ THETA = 0.0001
 
 class DynaQWorldWorker(mp.Process):
 
-    def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every,global_network, target_network, world_model, q, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, state_size, action_size, n_episodes, lr, gamma, update_every,global_network, target_network, world_model, q, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(DynaQWorldWorker, self).__init__()
         self.id = id
-        self.ps = ps
         self.env = env
         self.state_size = state_size
         self.action_size = action_size
