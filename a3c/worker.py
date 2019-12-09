@@ -57,12 +57,16 @@ class A3CWorker(mp.Process):
         self.eps_decay = eps_decay
 
     def act(self, state, eps=0.):
-        state = torch.FloatTensor(state).to(device)
-        logits = self.global_policy_network.forward(state)
-        dist = F.softmax(logits, dim=0)
-        probs = Categorical(dist)
+        try:
+            state = torch.FloatTensor(state).to(device)
+            logits = self.global_policy_network.forward(state)
+            dist = F.softmax(logits, dim=0)
+            probs = Categorical(dist)
 
-        return probs.sample().cpu().detach().item()
+            return probs.sample().cpu().detach().item()
+        except:
+            print("error in probs")
+            return 0
 
     def compute_loss(self, trajectory):
         states = torch.FloatTensor([sars[0] for sars in trajectory]).to(device)
