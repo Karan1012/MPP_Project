@@ -88,21 +88,6 @@ class ParallelDQNWorker(mp.Process):
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
         self.local_memory.add(state, action, reward, next_state, done)
-     #   self.sync_with_global()
-
-        # Update local parameters with that of parameter server
-        #copy_parameters(self.ps.get_parameters(), self.qnetwork_local.parameters())
-        #summed_gradients = torch.tensor(self.ps.get_summed_gradients())
-
-        #self.qnetwork_local.set_gradients(self.ps.sync())
-     #   copy_parameters(self.ps.get(), self.qnetwork_local.parameters())
-     #    self.l.acquire()
-     #    try:
-     #        self.qnetwork_local.load_state_dict(self.global_network.state_dict())
-     #    finally:
-     #        self.l.release()
-
-
 
         # Increment local timer
         self.t_step += 1

@@ -2,6 +2,8 @@ import random
 import time
 from collections import deque
 
+from torch import optim
+
 from a3c.model import ValueNetwork, PolicyNetwork
 
 import torch
@@ -15,8 +17,8 @@ from utils.device import device
 
 class A3CWorker(mp.Process):
 
-    def __init__(self, id, env, state_size, action_size, gamma, global_value_network, global_policy_network, global_value_optimizer,
-                 global_policy_optimizer, global_episode, n_episodes, update_every, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, state_size, action_size, gamma, lr, global_value_network, global_policy_network,
+                 global_episode, n_episodes, update_every, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(A3CWorker, self).__init__()
         self.name = "w%i" % id
 
@@ -32,18 +34,18 @@ class A3CWorker(mp.Process):
         self.action_dim = env.action_space.n
 
         self.gamma = gamma
-        self.local_value_network = ValueNetwork(self.obs_dim, 1)
-        self.local_policy_network = PolicyNetwork(self.obs_dim, self.action_dim)
+        # self.local_value_network = ValueNetwork(self.obs_dim, 1)
+        # self.local_policy_network = PolicyNetwork(self.obs_dim, self.action_dim)
 
         self.global_value_network = global_value_network
         self.global_policy_network = global_policy_network
         self.global_episode = global_episode
-        self.global_value_optimizer = global_value_optimizer
-        self.global_policy_optimizer = global_policy_optimizer
+        self.global_value_optimizer = optim.SGD(self.global_value_network.parameters(), lr=lr, momentum=.5)
+        self.global_policy_optimizer = optim.SGD(self.global_policy_network.parameters(), lr=lr, momentum=.5)
         self.n_episodes = n_episodes
 
         # sync local networks with global networks
-        self.sync_with_global()
+       # self.sync_with_global()
 
         self.t_step = 0
         self.max_t = max_t
@@ -57,7 +59,7 @@ class A3CWorker(mp.Process):
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
 
             with torch.no_grad():
-                action_values = self.local_policy_network(state)  # Make choice based on local network
+                action_values = self.global_policy_network(state)  # Make choice based on local network
 
             return np.argmax(action_values.cpu().data.numpy())
         else:
@@ -77,11 +79,11 @@ class A3CWorker(mp.Process):
         value_targets = rewards.view(-1, 1) + torch.FloatTensor(discounted_rewards).view(-1, 1).to(device)
 
         # compute value loss
-        values = self.local_value_network.forward(states)
+        values = self.global_value_network.forward(states)
         value_loss = F.mse_loss(values, value_targets.detach())
 
         # compute policy loss with entropy bonus
-        logits = self.local_policy_network.forward(states)
+        logits = self.global_policy_network.forward(states)
         dists = F.softmax(logits, dim=1)
         probs = Categorical(dists)
 
@@ -103,23 +105,23 @@ class A3CWorker(mp.Process):
         self.global_value_optimizer.zero_grad()
         value_loss.backward()
         # propagate local gradients to global parameters
-        for local_params, global_params in zip(self.local_value_network.parameters(),
-                                               self.global_value_network.parameters()):
-            global_params._grad = local_params._grad
+        # for local_params, global_params in zip(self.local_value_network.parameters(),
+        #                                        self.global_value_network.parameters()):
+        #     global_params._grad = local_params._grad
         self.global_value_optimizer.step()
 
         self.global_policy_optimizer.zero_grad()
         policy_loss.backward()
-        # propagate local gradients to global parameters
-        for local_params, global_params in zip(self.local_policy_network.parameters(),
-                                               self.global_policy_network.parameters()):
-            global_params._grad = local_params._grad
+        # # propagate local gradients to global parameters
+        # for local_params, global_params in zip(self.local_policy_network.parameters(),
+        #                                        self.global_policy_network.parameters()):
+        #     global_params._grad = local_params._grad
             # print(global_params._grad)
         self.global_policy_optimizer.step()
 
-    def sync_with_global(self):
-        self.local_value_network.load_state_dict(self.global_value_network.state_dict())
-        self.local_policy_network.load_state_dict(self.global_policy_network.state_dict())
+    # def sync_with_global(self):
+    #     self.local_value_network.load_state_dict(self.global_value_network.state_dict())
+    #     self.local_policy_network.load_state_dict(self.global_policy_network.state_dict())
 
     def run(self):
         t_step = 0
@@ -133,14 +135,14 @@ class A3CWorker(mp.Process):
             score = 0
             t_step += 1
             for t in range(self.max_t):
-                self.sync_with_global()
+             #   self.sync_with_global()
                 action = self.act(state, eps)
                 next_state, reward, done, _ = self.env.step(action)
                 trajectory.append([state, action, reward, next_state, done])
 
                 if t_step % self.update_every == 0:
-                    with self.global_episode.get_lock():
-                        self.update_global(trajectory)
+                   # with self.global_episode.get_lock():
+                    self.update_global(trajectory)
 
                       #  trajectory = []
 
@@ -148,8 +150,8 @@ class A3CWorker(mp.Process):
                 score += reward
                 if done:
                     if len(trajectory):
-                        with self.global_episode.get_lock():
-                            self.update_global(trajectory)
+                       # with self.global_episode.get_lock():
+                        self.update_global(trajectory)
                             #self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
