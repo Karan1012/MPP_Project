@@ -254,7 +254,11 @@ class DynaQWorldWorker(mp.Process):
         t_step = 0
         while True:
 
-            experiences = self.q.get()
+            try:
+
+                experiences = self.q.get()
+            except:
+                continue
 
             t_step += 1
 
