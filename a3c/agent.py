@@ -7,11 +7,13 @@ from a3c.worker import A3CWorker
 from utils.agent import Agent
 from utils.shared_adam import SharedAdam
 
+UPDATE_EVERY = 5
 
 class A3CAgent(Agent):
 
     def __init__(self, env, num_threads, gamma, lr, global_max_episode):
         self.env = env
+        state_size, action_size = env.observation_space.shape[0], env.action_space.n
 
         self.gamma = gamma
         self.lr = lr
@@ -27,9 +29,9 @@ class A3CAgent(Agent):
         self.global_value_optimizer.share_memory()
         self.global_policy_optimizer.share_memory()
 
-        self.workers = [A3CWorker(i, env, self.gamma, self.global_value_network, self.global_policy_network, \
+        self.workers = [A3CWorker(i, env, state_size, action_size, self.gamma, self.global_value_network, self.global_policy_network, \
                                         self.global_value_optimizer, self.global_policy_optimizer, self.global_episode,
-                                        self.GLOBAL_MAX_EPISODE) for i in range(num_threads)]
+                                        self.GLOBAL_MAX_EPISODE, UPDATE_EVERY) for i in range(num_threads)]
 
     def train(self):
         [worker.start() for worker in self.workers]

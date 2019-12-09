@@ -74,16 +74,6 @@ class ParallelDQNWorker(mp.Process):
 
 
     def act(self, state, eps=0.):
-
-        """Returns actions for given state as per current policy.
-
-        Params
-        ======
-            state (array_like): current state
-            eps (float): epsilon, for epsilon-greedy action selection
-        """
-
-        # Epsilon-greedy action selection
         if random.random() > eps:
             # Turn the state into a tensor_
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
@@ -158,25 +148,6 @@ class ParallelDQNWorker(mp.Process):
 
 
     def learn(self, experiences):
-        #self.l
-        """Update value parameters using given batch of experience tuples.
-        Params
-        ======
-            experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
-            gamma (float): discount factor
-        """
-
-
-
-        # self.l.acquire()
-        # try:
-
-        # Minimize the loss
-     #
-
-
-
-        # ------------------- update target network ------------------- #
 
         loss = self.compute_loss(experiences)
 
