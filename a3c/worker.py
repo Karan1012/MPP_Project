@@ -40,8 +40,8 @@ class A3CWorker(mp.Process):
         self.global_value_network = global_value_network
         self.global_policy_network = global_policy_network
         self.global_episode = global_episode
-        self.global_value_optimizer = optim.SGD(self.global_value_network.parameters(), lr=lr, momentum=.5)
-        self.global_policy_optimizer = optim.SGD(self.global_policy_network.parameters(), lr=lr, momentum=.5)
+        self.global_value_optimizer = optim.SGD(self.global_value_network.parameters(), lr=lr, momentum=.1)
+        self.global_policy_optimizer = optim.SGD(self.global_policy_network.parameters(), lr=lr, momentum=.1)
         self.n_episodes = n_episodes
 
         # sync local networks with global networks
