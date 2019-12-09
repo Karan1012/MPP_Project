@@ -63,7 +63,7 @@ class A3CWorker(mp.Process):
             dist = F.softmax(logits, dim=0)
             probs = Categorical(dist)
 
-            return probs.sample().cpu().detach().item()
+            return probs.sample().detach().item()
         except:
             print("error in probs")
             return 0

@@ -9,7 +9,7 @@ LR = 5e-4  # learning rate
 def main():
     parser = argparse.ArgumentParser(description='Process arguments')
     parser.add_argument('--agent', type=str, default="a3c", help='Agent to use - dqn, a3c, or dynaq')
-    parser.add_argument('--num-threads', type=int, default=3, help='Number of threads to use')
+    parser.add_argument('--num-threads', type=int, default=8, help='Number of threads to use')
     parser.add_argument('--num-episodes', type=int, default=10000, help='Number of episodes')
     #parser.add_argument('--do-render', type=bool, default=False, help='Whether or not to render game')
     args = parser.parse_args()
