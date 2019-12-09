@@ -58,7 +58,7 @@ class A3CWorker(mp.Process):
 
     def act(self, state, eps=0.):
         try:
-            state = torch.FloatTensor(state).to(device)
+            state = torch.FloatTensor(state)
             logits = self.global_policy_network.forward(state)
             dist = F.softmax(logits, dim=0)
             probs = Categorical(dist)
