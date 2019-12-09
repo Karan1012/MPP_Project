@@ -255,19 +255,19 @@ class DynaQWorldWorker(mp.Process):
         t_step = 0
         while True:
 
+         #   try:
+            self.l.acquire()
             try:
-                self.l.acquire()
-                try:
-                    states = self.q[0].get()
-                    actions = self.q[1].get()
-                    rewards = self.q[2].get()
-                    next_states = self.q[3].get()
-                    dones = self.q[4].get()
+                states = self.q[0].get()
+                actions = self.q[1].get()
+                rewards = self.q[2].get()
+                next_states = self.q[3].get()
+                dones = self.q[4].get()
 
-                finally:
-                    self.l.release()
-            except:
-                continue
+            finally:
+                self.l.release()
+            # except:
+            #     continue
 
             t_step += 1
 
