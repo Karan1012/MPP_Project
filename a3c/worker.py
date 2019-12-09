@@ -56,7 +56,8 @@ class A3CWorker(mp.Process):
     def act(self, state, eps=0.):
         if random.random() > eps:
             # Turn the state into a tensor_
-            state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+         #   state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+            state = torch.from_numpy(state).float().to(device)
 
             with torch.no_grad():
                 action_values = self.global_policy_network(state)  # Make choice based on local network

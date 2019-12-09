@@ -20,9 +20,10 @@ class A3CAgent(Agent):
         self.global_episode = mp.Value('i', 0)
         self.GLOBAL_MAX_EPISODE = global_max_episode
 
-        self.global_value_network = ValueNetwork(self.env.observation_space.shape[0], 1)
+        self.global_value_network = ValueNetwork(state_size, 1)
         self.global_value_network.share_memory()
-        self.global_policy_network = PolicyNetwork(self.env.observation_space.shape[0], self.env.action_space.n)
+
+        self.global_policy_network = PolicyNetwork(state_size, action_size)
         self.global_policy_network.share_memory()
         # self.global_value_optimizer = SharedAdam(self.global_value_network.parameters(), lr=lr)
         # self.global_policy_optimizer = SharedAdam(self.global_policy_network.parameters(), lr=lr)
