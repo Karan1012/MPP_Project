@@ -294,8 +294,8 @@ class DynaQWorldWorker(mp.Process):
 
             self.learn_world(states, actions, rewards, next_states, dones)
 
-           # if self.t_step > 1000:
-            self.planning()
+            if self.t_step > 1000:
+                self.planning()
 
 
           #  if t_step > 1000:
