@@ -164,7 +164,17 @@ class DynaQWorldWorker(mp.Process):
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
+    def act(self, state, eps=.1):
+        if random.random() > eps:
+            # Turn the state into a tensor
+            state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
 
+            with torch.no_grad():
+                action_values = self.global_network(state)  # Make choice based on local network
+
+            return np.argmax(action_values.cpu().data.numpy())
+        else:
+            return random.choice(np.arange(self.action_size))
 
 
     def learn_world(self, states, actions, rewards, next_states, dones):
@@ -230,7 +240,7 @@ class DynaQWorldWorker(mp.Process):
 
             while not done:
                 num_steps += 1
-                action = random.choice(np.arange(self.action_size))
+                action = self.act(state) #random.choice(np.arange(self.action_size))
 
                 s_ = torch.from_numpy(np.vstack([state])).to(self.device)
                 a_ = self.world_model.encode_action(torch.from_numpy(np.vstack([[action]])).to(self.device))
