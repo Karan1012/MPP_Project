@@ -18,6 +18,7 @@ from utils.device import device
 class A3CWorker(mp.Process):
 
     def __init__(self, id, env, state_size, action_size, gamma, lr, global_value_network, global_policy_network,
+                 global_value_optimizer, global_policy_optimizer,
                  global_episode, n_episodes, update_every, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(A3CWorker, self).__init__()
         self.name = "w%i" % id
@@ -40,8 +41,10 @@ class A3CWorker(mp.Process):
         self.global_value_network = global_value_network
         self.global_policy_network = global_policy_network
         self.global_episode = global_episode
-        self.global_value_optimizer = optim.SGD(self.global_value_network.parameters(), lr=.01, momentum=.1)
-        self.global_policy_optimizer = optim.SGD(self.global_policy_network.parameters(), lr=.01, momentum=.1)
+     #   self.global_value_optimizer = optim.SGD(self.global_value_network.parameters(), lr=.01, momentum=.5)
+      #  self.global_policy_optimizer = optim.SGD(self.global_policy_network.parameters(), lr=.01, momentum=.5)
+        self.global_value_optimizer = global_value_optimizer #optim.Adam(self.global_value_network.parameters(), lr=lr)
+        self.global_policy_optimizer = global_policy_optimizer #optim.Adam(self.global_policy_network.parameters(), lr=lr)
         self.n_episodes = n_episodes
 
         # sync local networks with global networks
@@ -84,8 +87,15 @@ class A3CWorker(mp.Process):
         values = self.global_value_network.forward(states)
         value_loss = F.mse_loss(values, value_targets.detach())
 
+        if np.asarray(torch.isnan(values)[0])[0] == True:
+            x = 2
+
         # compute policy loss with entropy bonus
         logits = self.global_policy_network.forward(states)
+
+        if np.asarray(torch.isnan(logits)[0])[0] == True:
+            x= 2
+
         dists = F.softmax(logits, dim=1)
         probs = Categorical(dists)
 
@@ -142,11 +152,18 @@ class A3CWorker(mp.Process):
                 next_state, reward, done, _ = self.env.step(action)
                 trajectory.append([state, action, reward, next_state, done])
 
+              # if (len(trajectory) == 64):
+
+
                 state = next_state
                 score += reward
                 if done:
                     with self.global_episode.get_lock():
                         self.update_global(trajectory)
+                        #trajectory = []
+                    # if len(trajectory):
+                    #     with self.global_episode.get_lock():
+                    #         self.update_global(trajectory)
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
