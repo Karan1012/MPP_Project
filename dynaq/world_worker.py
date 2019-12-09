@@ -8,7 +8,6 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from matplotlib.pyplot import plot
-from more_itertools import unzip
 
 from dynaq.env_model import EnvModelNetwork
 from dynaq.priority import PriorityModel
@@ -264,7 +263,7 @@ class DynaQWorldWorker(mp.Process):
 
             experiences = self.q.get()
 
-            for (state, action, next_state, reward, done) in unzip(experiences):
+            for (state, action, next_state, reward, done) in  list(zip(*experiences)):
                 self.local_memory.add(state, action, next_state, reward, done)
 
             self.learn_world(experiences)
