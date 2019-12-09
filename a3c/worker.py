@@ -57,17 +57,12 @@ class A3CWorker(mp.Process):
         self.eps_decay = eps_decay
 
     def act(self, state, eps=0.):
-        if random.random() > eps:
-            # Turn the state into a tensor_
-         #   state = torch.from_numpy(state).float().unsqueeze(0).to(device)
-            state = torch.from_numpy(state).float().to(device)
+        state = torch.FloatTensor(state).to(device)
+        logits = self.global_policy_network.forward(state)
+        dist = F.softmax(logits, dim=0)
+        probs = Categorical(dist)
 
-            with torch.no_grad():
-                action_values = self.global_policy_network(state)  # Make choice based on local network
-
-            return np.argmax(action_values.cpu().data.numpy())
-        else:
-            return random.choice(np.arange(self.action_size))
+        return probs.sample().cpu().detach().item()
 
     def compute_loss(self, trajectory):
         states = torch.FloatTensor([sars[0] for sars in trajectory]).to(device)
@@ -150,20 +145,17 @@ class A3CWorker(mp.Process):
              #   self.sync_with_global()
                 action = self.act(state, eps)
                 next_state, reward, done, _ = self.env.step(action)
+
                 trajectory.append([state, action, reward, next_state, done])
 
-              # if (len(trajectory) == 64):
-
+              # if (len(trajectory) == 64)
 
                 state = next_state
                 score += reward
                 if done:
-                    with self.global_episode.get_lock():
-                        self.update_global(trajectory)
-                        #trajectory = []
-                    # if len(trajectory):
-                    #     with self.global_episode.get_lock():
-                    #         self.update_global(trajectory)
+                    if len(trajectory):
+                        with self.global_episode.get_lock():
+                            self.update_global(trajectory)
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score

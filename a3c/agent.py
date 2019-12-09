@@ -25,8 +25,8 @@ class A3CAgent(Agent):
 
         self.global_policy_network = PolicyNetwork(state_size, action_size)
         self.global_policy_network.share_memory()
-        self.global_value_optimizer = SharedAdam(self.global_value_network.parameters(), lr=lr)
-        self.global_policy_optimizer = SharedAdam(self.global_policy_network.parameters(), lr=lr)
+        self.global_value_optimizer = SharedAdam(self.global_value_network.parameters(), lr=1e-3)
+        self.global_policy_optimizer = SharedAdam(self.global_policy_network.parameters(), lr=1e-3)
         self.global_value_optimizer.share_memory()
         self.global_policy_optimizer.share_memory()
 
