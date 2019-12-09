@@ -18,7 +18,7 @@ import torch.multiprocessing as mp
 from parallel_dqn.utils import copy_parameters
 from utils.avg import AverageMeter
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 TAU = 1e-3
 
@@ -40,6 +40,7 @@ class DynaQWorldWorker(mp.Process):
         self.gamma = gamma
         self.update_every = update_every
         self.q = q
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
        # self.env_model = env_model
 
@@ -77,7 +78,7 @@ class DynaQWorldWorker(mp.Process):
     def act(self, state, eps=0.):
         if random.random() > eps:
             # Turn the state into a tensor
-            state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+            state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
 
             with torch.no_grad():
                 action_values = self.global_network(state)  # Make choice based on local network
@@ -196,16 +197,16 @@ class DynaQWorldWorker(mp.Process):
 
 
     def get_experience_as_tensor(self, e):
-        states = torch.from_numpy(np.vstack([e.state])).float().to(device)
-        actions = torch.from_numpy(np.vstack([e.action])).long().to(device)
-        rewards = torch.from_numpy(np.vstack([e.reward])).float().to(device)
-        next_states = torch.from_numpy(np.vstack([e.next_state])).float().to(device)
-        dones = torch.from_numpy(np.vstack([e.done]).astype(np.uint8)).float().to(device)
+        states = torch.from_numpy(np.vstack([e.state])).float().to(self.device)
+        actions = torch.from_numpy(np.vstack([e.action])).long().to(self.device)
+        rewards = torch.from_numpy(np.vstack([e.reward])).float().to(self.device)
+        next_states = torch.from_numpy(np.vstack([e.next_state])).float().to(self.device)
+        dones = torch.from_numpy(np.vstack([e.done]).astype(np.uint8)).float().to(self.device)
 
         return (states, actions, rewards, next_states, dones)
 
     def get_action_values(self, state):
-        state = torch.from_numpy(state).float().unsqueeze(0).to(device)
+        state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             action_values = self.target_network(state)
@@ -229,8 +230,8 @@ class DynaQWorldWorker(mp.Process):
                 num_steps += 1
                 action = random.choice(np.arange(self.action_size))
 
-                s_ = torch.from_numpy(np.vstack([state])).to(device)
-                a_ = self.world_model.encode_action(torch.from_numpy(np.vstack([[action]])).to(device))
+                s_ = torch.from_numpy(np.vstack([state])).to(self.device)
+                a_ = self.world_model.encode_action(torch.from_numpy(np.vstack([[action]])).to(self.device))
 
                 with torch.no_grad():
                     next_state, reward, done_ = self.world_model(s_, a_)
