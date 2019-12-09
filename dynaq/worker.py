@@ -1,4 +1,5 @@
 import random
+import time
 from collections import deque, namedtuple
 from multiprocessing import Process
 
@@ -115,12 +116,14 @@ class DynaQWorker(mp.Process):
                 experiences = self.local_memory.sample(BATCH_SIZE)
                 self.learn(experiences)
 
-               # if self.q.empty():
-                self.q[0].put(experiences[0].detach().share_memory_())
-                self.q[1].put(experiences[1].detach().share_memory_())
-                self.q[2].put(experiences[2].detach().share_memory_())
-                self.q[3].put(experiences[3].detach().share_memory_())
-                self.q[4].put(experiences[4].detach().share_memory_())
+                if self.q[0].empty():
+
+                   # if self.q.empty():
+                    self.q[0].put(experiences[0].detach().share_memory_())
+                    self.q[1].put(experiences[1].detach().share_memory_())
+                    self.q[2].put(experiences[2].detach().share_memory_())
+                    self.q[3].put(experiences[3].detach().share_memory_())
+                    self.q[4].put(experiences[4].detach().share_memory_())
 
 
 
@@ -190,6 +193,7 @@ class DynaQWorker(mp.Process):
         scores = []
         scores_window = deque(maxlen=100)  # last 100 scores
         eps = self.eps_start  # initialize epsilon
+        start_time = time.time()
         for i_episode in range(1, self.n_episodes + 1):
             state = self.env.reset()
             self.initial_states.append(state)
@@ -208,15 +212,16 @@ class DynaQWorker(mp.Process):
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
             eps = max(self.eps_end, self.eps_decay * eps)  # decrease epsilon
+            elapsed_time = time.time() - start_time
             if self.id == 0:
-                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
-                #print("World loss: ", self.losses.avg)
+                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}, Runtime: '.format(self.id, i_episode, np.mean(
+                    scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
             if i_episode % 100 == 0:
-                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
+                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}, Runtime: '.format(self.id, i_episode, np.mean(
+                    scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
             if np.mean(scores_window) >= 200.0:
                 print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
-                                                                                             np.mean(scores_window)))
-              #  torch.save(self.qnetwork_local.state_dict(), 'checkpoint.pth')
+                                                                                             np.mean(scores_window)))              #  torch.save(self.qnetwork_local.state_dict(), 'checkpoint.pth')
                 break
 
         #plot(id, scores)
