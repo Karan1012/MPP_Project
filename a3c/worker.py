@@ -143,9 +143,9 @@ class A3CWorker(mp.Process):
                 score += reward
                 if done:
                     if len(trajectory):
-                       # with self.global_episode.get_lock():
-                        self.update_global(trajectory)
-                        self.sync_with_global()
+                        with self.global_episode.get_lock():
+                            self.update_global(trajectory)
+                            self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
