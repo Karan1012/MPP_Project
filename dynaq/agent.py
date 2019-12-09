@@ -27,7 +27,7 @@ class DynaQAgent(Agent):
         state_size, action_size = env.observation_space.shape[0], env.action_space.n
 
         self.world_model = EnvModelNetwork(state_size, action_size).to(device)
-        self.world_optimizer = optim.Adam(self.world_model.parameters(), lr=lr)
+     #   self.world_optimizer = optim.Adam(self.world_model.parameters(), lr=lr)
 
         self.qnetwork_global = QNetwork(state_size, action_size) #.to(device)
         self.qnetwork_global.share_memory()
