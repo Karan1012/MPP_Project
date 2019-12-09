@@ -116,11 +116,11 @@ class DynaQWorker(mp.Process):
                 self.learn(experiences)
 
                # if self.q.empty():
-                self.q[0].put(experiences[0])
-                self.q[1].put(experiences[1])
-                self.q[2].put(experiences[2])
-                self.q[3].put(experiences[3])
-                self.q[4].put(experiences[4])
+                self.q[0].put(experiences[0].detach().share_memory_())
+                self.q[1].put(experiences[1].detach().share_memory_())
+                self.q[2].put(experiences[2].detach().share_memory_())
+                self.q[3].put(experiences[3].detach().share_memory_())
+                self.q[4].put(experiences[4].detach().share_memory_())
 
 
 

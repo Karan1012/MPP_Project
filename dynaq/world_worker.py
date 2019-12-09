@@ -258,11 +258,23 @@ class DynaQWorldWorker(mp.Process):
          #   try:
             self.l.acquire()
             try:
-                states = self.q[0].get()
-                actions = self.q[1].get()
-                rewards = self.q[2].get()
-                next_states = self.q[3].get()
-                dones = self.q[4].get()
+                states_ = self.q[0].get()
+                actions_ = self.q[1].get()
+                rewards_ = self.q[2].get()
+                next_states_ = self.q[3].get()
+                dones_ = self.q[4].get()
+
+                states = states_.clone()
+                actions = actions_.clone()
+                rewards = rewards_.clone()
+                next_states = next_states_.clone()
+                dones = dones_.clone()
+
+                del states_
+                del actions_
+                del rewards_
+                del next_states_
+                del dones_
 
             finally:
                 self.l.release()
