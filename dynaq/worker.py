@@ -116,7 +116,7 @@ class DynaQWorker(mp.Process):
                 self.learn(experiences)
 
                # if self.q.empty():
-                self.q[self.t_step % len(self.q)].put(experiences)
+                self.q[self.t_step % len(self.q)].put(experiences[0])
 
 
 
