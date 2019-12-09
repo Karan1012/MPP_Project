@@ -49,7 +49,7 @@ class DynaQAgent(Agent):
         self.workers = [DynaQWorldWorker(id=id, env=env, state_size=env.observation_space.shape[0],
                                           action_size=env.action_space.n, n_episodes=global_max_episode, lr=lr,
                                           gamma=gamma, update_every=UPDATE_EVERY,
-                                       global_network=self.qnetwork_global, target_network=self.qnetwork_target, world_model=self.world_model, q=self.q, lock=self.lock) for id in range(num_threads-1)]
+                                       global_network=self.qnetwork_global, target_network=self.qnetwork_target, world_model=self.world_model, q=self.q, lock=self.lock, num_threads=num_threads) for id in range(num_threads-1)]
     def train(self):
        # self.ps.start()
 
