@@ -166,14 +166,14 @@ class DynaQWorldWorker(mp.Process):
 
 
 
-    def learn_world(self, experiences):
+    def learn_world(self, states, actions, rewards, next_states, dones):
         """Update value parameters using given batch of experience tuples.
         Params
         ======
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones = experiences
+      #  states, actions, rewards, next_states, dones = experiences
 
         act = self.world_model.encode_action(actions)
 
@@ -268,20 +268,20 @@ class DynaQWorldWorker(mp.Process):
                     self.l.release()
             except:
                 continue
-            #
-            # t_step += 1
-            #
-            # if t_step % 100 == 0:
-            #     print("World loss: ", self.losses.avg)
-            #     self.planning()
-            #     self.losses.reset()
-            #
-            #    # e = experiences.detach().copy()
-            #
-            # for (state, action, next_state, reward, done) in  list(zip(*experiences)):
-            #     self.local_memory.add(state, action, next_state, reward, done)
-            #
-            # self.learn_world(experiences)
+
+            t_step += 1
+
+            if t_step % 100 == 0:
+                print("World loss: ", self.losses.avg)
+                self.planning()
+                self.losses.reset()
+
+               # e = experiences.detach().copy()
+
+            for (state, action, next_state, reward, done) in zip(states, actions, rewards, next_states, dones):
+                self.local_memory.add(state, action, next_state, reward, done)
+
+            self.learn_world(states, actions, rewards, next_states, dones)
 
 
           #  if t_step > 1000:
