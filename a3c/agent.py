@@ -31,8 +31,7 @@ class A3CAgent(Agent):
         # self.global_policy_optimizer.share_memory()
 
         self.workers = [A3CWorker(i, env, state_size, action_size, self.gamma, lr, self.global_value_network, self.global_policy_network, \
-                                        self.global_episode,
-                                        self.GLOBAL_MAX_EPISODE, UPDATE_EVERY) for i in range(num_threads)]
+                                        self.global_episode,  self.GLOBAL_MAX_EPISODE, UPDATE_EVERY) for i in range(num_threads)]
 
     def train(self):
         [worker.start() for worker in self.workers]
