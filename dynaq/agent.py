@@ -1,5 +1,4 @@
-from multiprocessing import Queue, Pipe
-
+import torch
 from torch import optim
 
 from dynaq.env_model import EnvModelNetwork
@@ -34,7 +33,7 @@ class DynaQAgent(Agent):
         self.qnetwork_target = QNetwork(state_size, action_size) #.to(device)
         self.qnetwork_target.share_memory()
 
-        self.q = Queue()
+        self.q = torch.multiprocessing.Queue()
 
      #   a, b = Pipe()
 

@@ -255,7 +255,6 @@ class DynaQWorldWorker(mp.Process):
         while True:
 
             try:
-
                 experiences = self.q.get()
             except:
                 continue
