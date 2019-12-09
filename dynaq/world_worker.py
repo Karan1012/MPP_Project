@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from matplotlib.pyplot import plot
+from more_itertools import unzip
 
 from dynaq.env_model import EnvModelNetwork
 from dynaq.priority import PriorityModel
@@ -28,10 +29,10 @@ BATCH_SIZE = 64  # minibatch size
 
 THETA = 0.0001
 
-class DynaQWorker(mp.Process):
+class DynaQWorldWorker(mp.Process):
 
     def __init__(self, id, env, ps, state_size, action_size, n_episodes, lr, gamma, update_every,global_network, target_network, world_model, q, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
-        super(DynaQWorker, self).__init__()
+        super(DynaQWorldWorker, self).__init__()
         self.id = id
         self.ps = ps
         self.env = env
@@ -99,7 +100,7 @@ class DynaQWorker(mp.Process):
         #summed_gradients = torch.tensor(self.ps.get_summed_gradients())
 
         #self.qnetwork_local.set_gradients(self.ps.sync())
-      #  copy_parameters(self.ps.get(), self.global_network.parameters())
+        copy_parameters(self.ps.get(), self.global_network.parameters())
 
         # Increment local timer
         self.t_step += 1
@@ -109,14 +110,18 @@ class DynaQWorker(mp.Process):
 
         # If enough samples are available in memory, get random subset and learn
         # Learn every UPDATE_EVERY time steps.
+        #if self.t_step % self.update_every == 0:
         if self.t_step > BATCH_SIZE:
-            self.q.put(self.local_memory.sample(BATCH_SIZE))
+            experiences = self.local_memory.sample(BATCH_SIZE)
+            self.learn(experiences)
+            #self.learn_world(experiences)
 
-        if self.t_step % self.update_every == 0:
-            if self.t_step > BATCH_SIZE:
-                experiences = self.local_memory.sample(BATCH_SIZE)
-                self.learn(experiences)
+            experiences = self.local_memory.sample(BATCH_SIZE)
+            self.learn_world(experiences)
 
+        if self.t_step % 1000 == 0:
+            print("predicting on world")
+            self.planning()
 
 
     def learn(self, experiences):
@@ -159,6 +164,39 @@ class DynaQWorker(mp.Process):
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
 
+
+
+    def learn_world(self, experiences):
+        """Update value parameters using given batch of experience tuples.
+        Params
+        ======
+            experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
+            gamma (float): discount factor
+        """
+        states, actions, rewards, next_states, dones = experiences
+
+        act = self.world_model.encode_action(actions)
+
+        self.world_optimizer.zero_grad()
+
+        out1, out2, out3 = self.world_model(states, act)
+
+        loss1 = F.mse_loss(out1, next_states)
+        loss2 = F.mse_loss(out2, rewards)
+       # loss3 = F.mse_loss(out3, dones)
+        loss3 = F.binary_cross_entropy(out3, dones)
+        loss = loss1 + loss2 + loss3
+
+
+        loss.backward()
+
+        self.world_optimizer.step()
+
+        self.losses.update(np.array(loss.data).reshape(1)[0])
+
+       # print("World model loss: ", loss)
+
+
     def get_experience_as_tensor(self, e):
         states = torch.from_numpy(np.vstack([e.state])).float().to(device)
         actions = torch.from_numpy(np.vstack([e.action])).long().to(device)
@@ -180,38 +218,64 @@ class DynaQWorker(mp.Process):
         priority = reward + self.gamma * np.max(self.get_action_values(next_state)) - self.get_action_values(state)[action]
         return priority
 
+    def planning(self):
+
+        simulated_memory = ReplayBuffer(self.action_size, BUFFER_SIZE, BATCH_SIZE)
+
+        for i in range(1):
+            done = False
+            state = self.local_memory.get_one_state() #self.initial_states[random.choice(np.arange(len(self.initial_states)))]
+            num_steps = 0
+
+            while not done:
+                num_steps += 1
+                action = random.choice(np.arange(self.action_size))
+
+                s_ = torch.from_numpy(np.vstack([state])).to(device)
+                a_ = self.world_model.encode_action(torch.from_numpy(np.vstack([[action]])).to(device))
+
+                with torch.no_grad():
+                    next_state, reward, done_ = self.world_model(s_, a_)
+
+                #done = F.softmax(done_)[0][0]
+                done = True if np.asarray(done_)[0][0] >= .5 else False
+
+                simulated_memory.add(state, action, reward[0][0], next_state[0], done)
+
+                state = next_state
+
+                if num_steps > 100:
+                    done = True
+
+        l = min(BATCH_SIZE, len(simulated_memory))
+        experiences = simulated_memory.sample(l)
+        self.learn(experiences)
 
     def run(self):
-        scores = []
-        scores_window = deque(maxlen=100)  # last 100 scores
-        eps = self.eps_start  # initialize epsilon
-        for i_episode in range(1, self.n_episodes + 1):
-            state = self.env.reset()
-            self.initial_states.append(state)
-            score = 0
-            self.losses.reset()
-            for t in range(self.max_t):
-                action = self.act(state, eps)
-                # if do_render:
-                #     self.env.render()
-                next_state, reward, done, _ = self.env.step(action)
-                self.step(state, action, reward, next_state, done)
-                state = next_state
-                score += reward
-                if done:
-                    break
-            scores_window.append(score)  # save most recent score
-            scores.append(score)  # save most recent score
-            eps = max(self.eps_end, self.eps_decay * eps)  # decrease epsilon
-            if self.id == 0:
-                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
-                #print("World loss: ", self.losses.avg)
-            if i_episode % 100 == 0:
-                print('\rThread: {}, Episode {}\tAverage Score: {:.2f}'.format(self.id, i_episode, np.mean(scores_window)))
-            if np.mean(scores_window) >= 200.0:
-                print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
-                                                                                             np.mean(scores_window)))
-              #  torch.save(self.qnetwork_local.state_dict(), 'checkpoint.pth')
-                break
+        t_step = 0
+        while True:
+            t_step += 1
+            if t_step % 100 == 0:
+                print("World loss: ", self.losses.avg)
+                self.planning()
+                self.losses.reset()
+
+
+
+            experiences = self.q.get()
+
+            for (state, action, next_state, reward, done) in unzip(experiences):
+                self.local_memory.add(state, action, next_state, reward, done)
+
+            self.learn_world(experiences)
+
+          #  if t_step > 1000:
+                #print("planning step")
+
+
+
+
+
+
 
         #plot(id, scores)

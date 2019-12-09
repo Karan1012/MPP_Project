@@ -63,6 +63,7 @@ class A3CWorker(mp.Process):
         self.sync_with_global()
 
     def act(self, state):
+
         state = torch.FloatTensor(state).to(self.device)
         logits, _ = self.local_network.forward(state)
         dist = F.softmax(logits, dim=0)
@@ -122,7 +123,7 @@ class A3CWorker(mp.Process):
     def run(self):
         t_step = 0
         scores = []
-        scores_window = deque(maxlen=100)  # last 100 scores
+        scores_window = deque(maxlen=20)  # last 100 scores
         eps = self.eps_start  # initialize epsilon
         start_time = time.time()
         for i_episode in range(1, self.n_episodes + 1):

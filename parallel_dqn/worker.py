@@ -48,9 +48,6 @@ class ParallelDQNWorker(mp.Process):
 
         self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=.5)
 
-        self.local_network = QNetwork(state_size, action_size).to(device)
-
-
         #self.ps.initialize_gradients(self.id, [p for p in self.qnetwork_target.parameters()])
 
        # self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
@@ -64,14 +61,6 @@ class ParallelDQNWorker(mp.Process):
    #     self.optimizer = optimizer
 
         self.l = lock
-
-        self.sync_with_global()
-
-
-    def sync_with_global(self):
-        self.local_network.load_state_dict(self.global_network.state_dict())
-     #   self.local_policy_network.load_state_dict(self.global_policy_network.state_dict())
-
 
     def act(self, state, eps=0.):
         if random.random() > eps:
