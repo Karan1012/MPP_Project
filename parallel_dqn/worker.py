@@ -102,18 +102,6 @@ class ParallelDQNWorker(mp.Process):
                 experiences = self.local_memory.sample(BATCH_SIZE)
                 self.learn(experiences)
 
-        # Learn every UPDATE_EVERY time steps.
-    #    if self.t_step % self.update_every == 0: # TODO: Fix, need to make global memory first
-            #summed_gradients = torch.tensor(self.ps.get_summed_gradients()) # copy shared memory tensor back to local memory
-            #self.qnetwork_target.set_gradients(self.ps.sync())
-            #copy_parameters(self.ps.get(), self.qnetwork_target.parameters())
-      #      self.qnetwork_target.load_state_dict(self.global_network.state_dict())
-            # self.l.acquire()
-            # try:
-            #     self.qnetwork_target.load_state_dict(self.global_network.state_dict())
-            # finally:
-            #     self.l.release()
-
     def compute_loss(self, experiences):
         states, actions, rewards, next_states, dones = experiences
 
