@@ -33,7 +33,7 @@ class DynaQAgent(Agent):
         self.qnetwork_target = QNetwork(state_size, action_size) #.to(device)
         self.qnetwork_target.share_memory()
 
-        self.q = torch.multiprocessing.Queue()
+        self.q = [torch.multiprocessing.Queue() for _ in range(num_threads-1)]
 
      #   a, b = Pipe()
 
@@ -45,7 +45,7 @@ class DynaQAgent(Agent):
         self.workers = [DynaQWorldWorker(id=id, env=env, state_size=env.observation_space.shape[0],
                                           action_size=env.action_space.n, n_episodes=global_max_episode, lr=lr,
                                           gamma=gamma, update_every=UPDATE_EVERY,
-                                       global_network=self.qnetwork_global, target_network=self.qnetwork_target, world_model=self.world_model, q=self.q) for id in range(num_threads-1)]
+                                       global_network=self.qnetwork_global, target_network=self.qnetwork_target, world_model=self.world_model, q=self.q[id]) for id in range(num_threads-1)]
     def train(self):
        # self.ps.start()
 
