@@ -4,7 +4,7 @@ from collections import deque
 
 from torch import optim
 
-from a3c.model import ValueNetwork, PolicyNetwork
+from a3c.model import TwoHeadNetwork
 
 import torch
 import torch.nn.functional as F
@@ -13,12 +13,10 @@ from torch.distributions import Categorical
 
 import numpy as np
 
-from utils.device import device
 
 class A3CWorker(mp.Process):
 
-    def __init__(self, id, env, state_size, action_size, gamma, lr, global_value_network, global_policy_network,
-                 global_value_optimizer, global_policy_optimizer,
+    def __init__(self, id, env, state_size, action_size, gamma, lr, global_network,  global_optimizer,
                  global_episode, n_episodes, update_every, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(A3CWorker, self).__init__()
         self.name = "w%i" % id
@@ -38,13 +36,18 @@ class A3CWorker(mp.Process):
         # self.local_value_network = ValueNetwork(self.obs_dim, 1)
         # self.local_policy_network = PolicyNetwork(self.obs_dim, self.action_dim)
 
-        self.global_value_network = global_value_network
-        self.global_policy_network = global_policy_network
+        self.global_network = global_network
+        self.global_optimizer = global_optimizer
+
+        self.local_network = TwoHeadNetwork(self.state_size, self.action_size)
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.global_episode = global_episode
      #   self.global_value_optimizer = optim.SGD(self.global_value_network.parameters(), lr=.01, momentum=.5)
       #  self.global_policy_optimizer = optim.SGD(self.global_policy_network.parameters(), lr=.01, momentum=.5)
-        self.global_value_optimizer = global_value_optimizer #optim.Adam(self.global_value_network.parameters(), lr=lr)
-        self.global_policy_optimizer = global_policy_optimizer #optim.Adam(self.global_policy_network.parameters(), lr=lr)
+      #   self.global_value_optimizer = global_value_optimizer #optim.Adam(self.global_value_network.parameters(), lr=lr)
+      #   self.global_policy_optimizer = global_policy_optimizer #optim.Adam(self.global_policy_network.parameters(), lr=lr)
         self.n_episodes = n_episodes
 
         # sync local networks with global networks
@@ -56,47 +59,36 @@ class A3CWorker(mp.Process):
         self.eps_end = eps_end
         self.eps_decay = eps_decay
 
-    def act(self, state, eps=0.):
-        try:
-            state = torch.FloatTensor(state)
-            logits = self.global_policy_network.forward(state)
-            dist = F.softmax(logits, dim=0)
-            probs = Categorical(dist)
+        # sync local networks with global
+        self.sync_with_global()
 
-            return probs.sample().detach().item()
-        except:
-            print("error in probs")
-            return 0
+    def act(self, state):
+        state = torch.FloatTensor(state).to(self.device)
+        logits, _ = self.local_network.forward(state)
+        dist = F.softmax(logits, dim=0)
+        probs = Categorical(dist)
+
+        return probs.sample().cpu().detach().item()
 
     def compute_loss(self, trajectory):
-        states = torch.FloatTensor([sars[0] for sars in trajectory]).to(device)
-        actions = torch.LongTensor([sars[1] for sars in trajectory]).view(-1, 1).to(device)
-        rewards = torch.FloatTensor([sars[2] for sars in trajectory]).to(device)
-        next_states = torch.FloatTensor([sars[3] for sars in trajectory]).to(device)
-        dones = torch.FloatTensor([sars[4] for sars in trajectory]).view(-1, 1).to(device)
+        states = torch.FloatTensor([sars[0] for sars in trajectory]).to(self.device)
+        actions = torch.LongTensor([sars[1] for sars in trajectory]).view(-1, 1).to(self.device)
+        rewards = torch.FloatTensor([sars[2] for sars in trajectory]).to(self.device)
+        next_states = torch.FloatTensor([sars[3] for sars in trajectory]).to(self.device)
+        dones = torch.FloatTensor([sars[4] for sars in trajectory]).view(-1, 1).to(self.device)
 
-
-        # compute value target
+        # compute discounted rewards
         discounted_rewards = [torch.sum(torch.FloatTensor([self.gamma ** i for i in range(rewards[j:].size(0))]) \
                                         * rewards[j:]) for j in
                               range(rewards.size(0))]  # sorry, not the most readable code.
-        value_targets = rewards.view(-1, 1) + torch.FloatTensor(discounted_rewards).view(-1, 1).to(device)
 
-        # compute value loss
-        values = self.global_value_network.forward(states)
-        value_loss = F.mse_loss(values, value_targets.detach())
-
-        if np.asarray(torch.isnan(values)[0])[0] == True:
-            x = 2
-
-        # compute policy loss with entropy bonus
-        logits = self.global_policy_network.forward(states)
-
-        if np.asarray(torch.isnan(logits)[0])[0] == True:
-            x= 2
-
+        logits, values = self.local_network.forward(states)
         dists = F.softmax(logits, dim=1)
         probs = Categorical(dists)
+
+        # compute value loss
+        value_targets = rewards.view(-1, 1) + torch.FloatTensor(discounted_rewards).view(-1, 1).to(self.device)
+        value_loss = F.mse_loss(values, value_targets.detach())
 
         # compute entropy bonus
         entropy = []
@@ -104,35 +96,28 @@ class A3CWorker(mp.Process):
             entropy.append(-torch.sum(dist.mean() * torch.log(dist)))
         entropy = torch.stack(entropy).sum()
 
+        # compute policy loss
         advantage = value_targets - values
         policy_loss = -probs.log_prob(actions.view(actions.size(0))).view(-1, 1) * advantage.detach()
-        policy_loss = policy_loss.mean() - 0.001 * entropy
+        policy_loss = policy_loss.mean()
 
-        return value_loss, policy_loss
+        total_loss = policy_loss + value_loss - 0.001 * entropy
+        return total_loss
 
     def update_global(self, trajectory):
-        value_loss, policy_loss = self.compute_loss(trajectory)
+        loss = self.compute_loss(trajectory)
 
-        self.global_value_optimizer.zero_grad()
-        value_loss.backward()
+        self.global_optimizer.zero_grad()
+        loss.backward()
         # propagate local gradients to global parameters
-        # for local_params, global_params in zip(self.local_value_network.parameters(),
-        #                                        self.global_value_network.parameters()):
-        #     global_params._grad = local_params._grad
-        self.global_value_optimizer.step()
+        for local_params, global_params in zip(self.local_network.parameters(), self.global_network.parameters()):
+            global_params._grad = local_params._grad
+            #print(global_params._grad)
+        self.global_optimizer.step()
 
-        self.global_policy_optimizer.zero_grad()
-        policy_loss.backward()
-        # # propagate local gradients to global parameters
-        # for local_params, global_params in zip(self.local_policy_network.parameters(),
-        #                                        self.global_policy_network.parameters()):
-        #     global_params._grad = local_params._grad
-            # print(global_params._grad)
-        self.global_policy_optimizer.step()
+    def sync_with_global(self):
+        self.local_network.load_state_dict(self.global_network.state_dict())
 
-    # def sync_with_global(self):
-    #     self.local_value_network.load_state_dict(self.global_value_network.state_dict())
-    #     self.local_policy_network.load_state_dict(self.global_policy_network.state_dict())
 
     def run(self):
         t_step = 0
@@ -147,7 +132,7 @@ class A3CWorker(mp.Process):
             t_step += 1
             for t in range(self.max_t):
              #   self.sync_with_global()
-                action = self.act(state, eps)
+                action = self.act(state)
                 next_state, reward, done, _ = self.env.step(action)
 
                 trajectory.append([state, action, reward, next_state, done])
@@ -160,6 +145,7 @@ class A3CWorker(mp.Process):
                     if len(trajectory):
                         with self.global_episode.get_lock():
                             self.update_global(trajectory)
+                            self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
