@@ -133,20 +133,24 @@ class A3CWorker(mp.Process):
             score = 0
             t_step += 1
             for t in range(self.max_t):
+                self.sync_with_global()
                 action = self.act(state, eps)
                 next_state, reward, done, _ = self.env.step(action)
                 trajectory.append([state, action, reward, next_state, done])
 
                 if t_step % self.update_every == 0:
-                    self.update_global(trajectory)
-                    self.sync_with_global()
+                    with self.global_episode.get_lock():
+                        self.update_global(trajectory)
+
+                      #  trajectory = []
 
                 state = next_state
                 score += reward
                 if done:
                     if len(trajectory):
-                        self.update_global(trajectory)
-                        self.sync_with_global()
+                        with self.global_episode.get_lock():
+                            self.update_global(trajectory)
+                            #self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score

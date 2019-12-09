@@ -7,7 +7,7 @@ from a3c.worker import A3CWorker
 from utils.agent import Agent
 from utils.shared_adam import SharedAdam
 
-UPDATE_EVERY = 5
+UPDATE_EVERY = 20
 
 class A3CAgent(Agent):
 

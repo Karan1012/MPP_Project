@@ -11,7 +11,7 @@ from utils.agent import Agent
 from utils.shared_adam import SharedAdam
 from utils.shared_asgd import SharedASGD
 
-UPDATE_EVERY = 10
+UPDATE_EVERY = 5
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64  # minibatch size
 
