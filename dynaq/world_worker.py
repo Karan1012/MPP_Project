@@ -30,7 +30,7 @@ THETA = 0.0001
 
 class DynaQWorldWorker(mp.Process):
 
-    def __init__(self, id, env, state_size, action_size, n_episodes, lr, gamma, update_every,global_network, target_network, world_model, q, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, state_size, action_size, n_episodes, lr, gamma, update_every,global_network, target_network, world_model, q, lock, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(DynaQWorldWorker, self).__init__()
         self.id = id
         self.env = env
@@ -40,6 +40,7 @@ class DynaQWorldWorker(mp.Process):
         self.gamma = gamma
         self.update_every = update_every
         self.q = q
+        self.l = lock
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
        # self.env_model = env_model
@@ -255,7 +256,16 @@ class DynaQWorldWorker(mp.Process):
         while True:
 
             try:
-                experiences = self.q.get()
+                self.l.acquire()
+                try:
+                    states = self.q[0].get()
+                    actions = self.q[1].get()
+                    rewards = self.q[2].get()
+                    next_states = self.q[3].get()
+                    dones = self.q[4].get()
+
+                finally:
+                    self.l.release()
             except:
                 continue
             #
