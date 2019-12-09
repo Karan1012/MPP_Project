@@ -108,13 +108,13 @@ class DynaQWorker(mp.Process):
 
         # If enough samples are available in memory, get random subset and learn
         # Learn every UPDATE_EVERY time steps.
-        if self.t_step > BATCH_SIZE:
-            self.q.put(self.local_memory.sample(BATCH_SIZE))
+
 
         if self.t_step % self.update_every == 0:
             if self.t_step > BATCH_SIZE:
                 experiences = self.local_memory.sample(BATCH_SIZE)
                 self.learn(experiences)
+                self.q.put(experiences)
 
 
 

@@ -261,6 +261,7 @@ class DynaQWorldWorker(mp.Process):
 
 
             experiences = self.q.get()
+           # e = experiences.detach().copy()
 
             for (state, action, next_state, reward, done) in  list(zip(*experiences)):
                 self.local_memory.add(state, action, next_state, reward, done)
