@@ -72,6 +72,7 @@ class A3CWorker(mp.Process):
         next_states = torch.FloatTensor([sars[3] for sars in trajectory]).to(device)
         dones = torch.FloatTensor([sars[4] for sars in trajectory]).view(-1, 1).to(device)
 
+
         # compute value target
         discounted_rewards = [torch.sum(torch.FloatTensor([self.gamma ** i for i in range(rewards[j:].size(0))]) \
                                         * rewards[j:]) for j in
@@ -140,19 +141,10 @@ class A3CWorker(mp.Process):
                 next_state, reward, done, _ = self.env.step(action)
                 trajectory.append([state, action, reward, next_state, done])
 
-                if t_step % self.update_every == 0:
-                   # with self.global_episode.get_lock():
-                    self.update_global(trajectory)
-
-                      #  trajectory = []
-
                 state = next_state
                 score += reward
                 if done:
-                    if len(trajectory):
-                       # with self.global_episode.get_lock():
-                        self.update_global(trajectory)
-                            #self.sync_with_global()
+                    self.update_global(trajectory)
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
