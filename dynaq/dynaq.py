@@ -16,7 +16,7 @@ class DynaQ(RLAlgorithm):
         state_size, action_size = env.observation_space.shape[0], env.action_space.n
 
         self.world_model = WorldModelNetwork(state_size, action_size)
-        self.world_optimizer = optim.Adam(self.world_model.parameters(), lr=lr)
+        self.world_optimizer = optim.SGD(self.world_model.parameters(), lr=lr)
         self.world_lock = Lock()
 
         self.qnetwork_global = QNetwork(state_size, action_size)
