@@ -16,8 +16,6 @@ class DynaQ(RLAlgorithm):
         state_size, action_size = env.observation_space.shape[0], env.action_space.n
 
         self.world_model = WorldModelNetwork(state_size, action_size)
-        self.world_optimizer = optim.SGD(self.world_model.parameters(), lr=lr)
-        self.world_lock = Lock()
 
         self.qnetwork_global = QNetwork(state_size, action_size)
         self.qnetwork_global.share_memory()
@@ -33,7 +31,7 @@ class DynaQ(RLAlgorithm):
 
         self.world_agents = [DynaQWorldAgent(id=id, state_size=state_size,action_size=action_size, n_episodes=global_max_episode, lr=lr,gamma=gamma,
                                        global_network=self.qnetwork_global, target_network=self.qnetwork_target,
-                                             world_model=self.world_model, world_optimizer=self.world_optimizer, world_lock=self.world_lock,
+                                             world_model=self.world_model,
                                         q=self.q, lock=self.lock, num_threads=num_threads) for id in range(num_threads-1)]
     def train(self):
 
