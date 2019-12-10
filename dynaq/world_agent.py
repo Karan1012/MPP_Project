@@ -153,7 +153,7 @@ class DynaQWorldAgent(mp.Process):
 
             while not done:
                 num_steps += 1
-                action = self.act(state) #random.choice(np.arange(self.action_size))
+                action = random.choice(np.arange(self.action_size)) #
 
                 s_ = torch.from_numpy(np.vstack([state])).to(self.device)
                 a_ = self.world_model.encode_action(torch.from_numpy(np.vstack([[action]])).to(self.device))
@@ -202,7 +202,7 @@ class DynaQWorldAgent(mp.Process):
         return states, actions, rewards, next_states, dones
 
     def run(self):
-        t_step = 0
+        t_step = self.id
         while True:
 
             t_step += 1
