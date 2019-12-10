@@ -94,7 +94,7 @@ class DynaQWorldWorker(mp.Process):
     def act(self, state, eps=.1):
         if random.random() > eps:
             # Turn the state into a tensor
-            state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
+          #  state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
 
             with torch.no_grad():
                 action_values = self.global_network(state)  # Make choice based on local network
