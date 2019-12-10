@@ -47,7 +47,7 @@ class DynaQWorldAgent(mp.Process):
 
         self.world_optimizer = optim.SGD(self.world_model.parameters(), lr=lr, momentum=.5)
 
-        self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=.5)
+        self.optimizer = optim.SGD(self.global_network.parameters(), lr=5e-6)
 
         self.losses = Average()
 
