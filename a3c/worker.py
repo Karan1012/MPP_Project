@@ -1,29 +1,22 @@
-import random
 import time
 from collections import deque
 
-from torch import optim
-
-from a3c.model import TwoHeadNetwork
-
+import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.multiprocessing as mp
+import torch.nn.functional as F
 from torch.distributions import Categorical
 
-import numpy as np
+from a3c.model import ActorCriticNetwork
 
 
 class A3CWorker(mp.Process):
 
     def __init__(self, id, env, state_size, action_size, gamma, lr, global_network,  global_optimizer,
-                 global_episode, n_episodes, update_every, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+                 global_episode, n_episodes, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(A3CWorker, self).__init__()
-        self.name = "w%i" % id
 
         self.id = id
-
-        self.update_every = update_every
 
         self.env = env
         self.state_size = state_size
@@ -33,25 +26,16 @@ class A3CWorker(mp.Process):
         self.action_dim = env.action_space.n
 
         self.gamma = gamma
-        # self.local_value_network = ValueNetwork(self.obs_dim, 1)
-        # self.local_policy_network = PolicyNetwork(self.obs_dim, self.action_dim)
 
         self.global_network = global_network
         self.global_optimizer = global_optimizer
 
-        self.local_network = TwoHeadNetwork(self.state_size, self.action_size)
+        self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.global_episode = global_episode
-     #   self.global_value_optimizer = optim.SGD(self.global_value_network.parameters(), lr=.01, momentum=.5)
-      #  self.global_policy_optimizer = optim.SGD(self.global_policy_network.parameters(), lr=.01, momentum=.5)
-      #   self.global_value_optimizer = global_value_optimizer #optim.Adam(self.global_value_network.parameters(), lr=lr)
-      #   self.global_policy_optimizer = global_policy_optimizer #optim.Adam(self.global_policy_network.parameters(), lr=lr)
         self.n_episodes = n_episodes
-
-        # sync local networks with global networks
-       # self.sync_with_global()
 
         self.t_step = 0
         self.max_t = max_t
@@ -162,26 +146,3 @@ class A3CWorker(mp.Process):
                 print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
                                                                                              np.mean(scores_window)))
                 break
-
-        # state = self.env.reset()
-        # trajectory = []  # [[s, a, r, s', done], [], ...]
-        # episode_reward = 0
-        #
-        # while self.global_episode.value < self.GLOBAL_MAX_EPISODE:
-        #     action = self.get_action(state)
-        #     next_state, reward, done, _ = self.env.step(action)
-        #     trajectory.append([state, action, reward, next_state, done])
-        #     episode_reward += reward
-        #
-        #     if done:
-        #         with self.global_episode.get_lock():
-        #             self.global_episode.value += 1
-        #         print(self.name + " | episode: " + str(self.global_episode.value) + " " + str(episode_reward))
-        #
-
-        #
-        #         trajectory = []
-        #         episode_reward = 0
-        #         state = self.env.reset()
-        #     else:
-        #         state = next_state

@@ -1,4 +1,4 @@
-class AverageMeter(object):
+class Average(object):
     """Computes and stores the average and current value"""
 
     def __init__(self):

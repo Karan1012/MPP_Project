@@ -1,19 +1,15 @@
 import random
 import time
 from collections import deque
-from multiprocessing import Process
+
 TAU = 1e-3  # for soft update of target parameters
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from parallel_dqn.model import QNetwork
 from parallel_dqn.replay_buffer import ReplayBuffer
 import torch.multiprocessing as mp
-
-from parallel_dqn.utils import copy_parameters
-from plot import plot
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -25,32 +21,23 @@ MAX_LOCAL_MEMORY = 10
 
 class ParallelDQNWorker(mp.Process):
 
-    def __init__(self, id, env, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, target_network, optimizer, lock, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
+    def __init__(self, id, env, do_render, state_size, action_size, n_episodes, lr, gamma, update_every, global_network, target_network, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(ParallelDQNWorker, self).__init__()
         self.id = id
-       # self.ps = ps
         self.env = env
+        self.do_render = do_render
         self.state_size = state_size
         self.action_size = action_size
         self.n_episodes = n_episodes
         self.gamma = gamma
         self.update_every = update_every
-       # self.global_memory = global_memory
-       # self.local_memory = mp.Queue()
+
         self.local_memory = ReplayBuffer(env.action_space.n, BUFFER_SIZE, BATCH_SIZE)
 
         self.global_network = global_network
         self.qnetwork_target = target_network
-  #      self.global_optimizer = global_optimizer
-
-     #   self.optimizer = optim.Adam(self.global_network.parameters(), lr=lr)
-     #   self.optimizer = optimizer
 
         self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=.5)
-
-        #self.ps.initialize_gradients(self.id, [p for p in self.qnetwork_target.parameters()])
-
-       # self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
 
         self.t_step = 0
         self.max_t = max_t
@@ -58,17 +45,13 @@ class ParallelDQNWorker(mp.Process):
         self.eps_end = eps_end
         self.eps_decay = eps_decay
 
-   #     self.optimizer = optimizer
-
-        self.l = lock
 
     def act(self, state, eps=0.):
         if random.random() > eps:
-            # Turn the state into a tensor_
             state = torch.from_numpy(state).float().unsqueeze(0).to(device)
 
             with torch.no_grad():
-                action_values = self.global_network(state)  # Make choice based on local network
+                action_values = self.global_network(state)
 
             return np.argmax(action_values.cpu().data.numpy())
         else:
@@ -80,9 +63,6 @@ class ParallelDQNWorker(mp.Process):
 
         # Increment local timer
         self.t_step += 1
-
-        # if self.t_step % MAX_LOCAL_MEMORY == 0:
-        #     self.global_memory.add(self.local_memory)
 
         # If enough samples are available in memory, get random subset and learn
         # Learn every UPDATE_EVERY time steps.
@@ -113,35 +93,15 @@ class ParallelDQNWorker(mp.Process):
 
         loss = self.compute_loss(experiences)
 
+        # Update gradients per HogWild! algorithm
         self.optimizer.zero_grad()
-
         loss.backward()
-        # for local_params, global_params in zip(self.local_network.parameters(),
-        #                                        self.global_network.parameters()):
-        #     global_params._grad = local_params._grad
         self.optimizer.step()
-
-        # self.l.acquire()
-        # try:
-        #
-        #
-        # finally:
-        #     self.l.release()
 
         self.soft_update(self.global_network, self.qnetwork_target, TAU)
 
 
-
-
     def soft_update(self, local_model, target_model, tau):
-        """Soft update model parameters.
-        θ_target = τ*θ_local + (1 - τ)*θ_target
-        Params
-        ======
-            local_model (PyTorch model): weights will be copied from
-            target_model (PyTorch model): weights will be copied to
-            tau (float): interpolation parameter
-        """
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
@@ -156,9 +116,8 @@ class ParallelDQNWorker(mp.Process):
             score = 0
             for t in range(self.max_t):
                 action = self.act(state, eps)
-               # iclearn
-                # f do_render:
-               #      self.env.render()
+                if self.do_render:
+                     self.env.render()
                 next_state, reward, done, _ = self.env.step(action)
                 self.step(state, action, reward, next_state, done)
                 state = next_state
@@ -179,4 +138,3 @@ class ParallelDQNWorker(mp.Process):
                 torch.save(self.global_network.state_dict(), 'checkpoint.pth')
                 break
 
-       # plot(id, scores)

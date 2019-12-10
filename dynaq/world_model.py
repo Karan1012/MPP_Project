@@ -2,20 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class EnvModelNetwork(nn.Module):
-    """Actor (Policy) Model."""
+class WorldModelNetwork(nn.Module):
 
     def __init__(self, state_size, action_size, seed=0, fc1_units=64, fc2_units=64):
-        """Initialize parameters and build model.
-        Params
-        ======
-            state_size (int): Dimension of each state
-            action_size (int): Dimension of each action
-            seed (int): Random seed
-            fc1_units (int): Number of nodes in first hidden layer
-            fc2_units (int): Number of nodes in second hidden layer
-        """
-        super(EnvModelNetwork, self).__init__()
+        super(WorldModelNetwork, self).__init__()
         self.seed = torch.manual_seed(seed)
         self.fc1_s = nn.Linear(state_size, fc1_units)
         self.fc1_a = nn.Linear(action_size, 1)
@@ -34,18 +24,6 @@ class EnvModelNetwork(nn.Module):
 
         self.out_act = nn.Sigmoid()
 
-    def one_hot_embedding(self, labels):
-        """Embedding labels to one-hot form.
-
-        Args:
-          labels: (LongTensor) class labels, sized [N,].
-          num_classes: (int) number of classes.
-
-        Returns:
-          (tensor) encoded labels, sized [N, #classes].
-        """
-        y = torch.eye(self.action_size)
-        return torch.tensor([y[l] for l in labels])
 
     def encode_action(self, action):
         return torch.nn.functional.one_hot(torch.squeeze(action, 1), num_classes=self.action_size).float()
@@ -60,7 +38,6 @@ class EnvModelNetwork(nn.Module):
         x = torch.cat((xs, xa), dim=1)
         x = F.relu(self.fc2(x))
         x = F.relu(self.fch(x))
-
 
         return self.fc3(x), self.fc4(x), self.out_act(self.fc5(x))
 

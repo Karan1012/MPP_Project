@@ -1,11 +1,10 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class TwoHeadNetwork(nn.Module):
+class ActorCriticNetwork(nn.Module):
 
     def __init__(self, input_dim, output_dim):
-        super(TwoHeadNetwork, self).__init__()
+        super(ActorCriticNetwork, self).__init__()
         self.policy1 = nn.Linear(input_dim, 256)
         self.policy2 = nn.Linear(256, output_dim)
 
