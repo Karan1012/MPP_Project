@@ -20,7 +20,7 @@ THETA = 0.0001
 
 class DynaQWorldAgent(mp.Process):
 
-    def __init__(self, id, state_size, action_size, n_episodes, lr, gamma, global_network, target_network, world_model, q, lock, num_threads):
+    def __init__(self, id, state_size, action_size, n_episodes, lr, gamma, global_network, target_network, world_model, world_optimizer, world_lock, q, lock, num_threads):
         super(DynaQWorldAgent, self).__init__()
         self.id = id
         self.state_size = state_size
@@ -45,7 +45,8 @@ class DynaQWorldAgent(mp.Process):
         self.target_network = target_network
         self.world_model = world_model
 
-        self.world_optimizer = optim.SGD(self.world_model.parameters(), lr=lr, momentum=.5)
+        self.world_optimizer = world_optimizer #optim.SGD(self.world_model.parameters(), lr=lr, momentum=.5)
+        self.world_lock = world_lock
 
         self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=.5)
 
@@ -215,7 +216,11 @@ class DynaQWorldAgent(mp.Process):
             for (state, action, next_state, reward, done) in zip(states, actions, rewards, next_states, dones):
                 self.local_memory.add(state, action, next_state, reward, done)
 
-            self.learn_world(states, actions, rewards, next_states, dones)
+            self.world_lock.acquire()
+            try:
+                self.learn_world(states, actions, rewards, next_states, dones)
+            finally:
+                self.world_lock.release()
 
             if self.losses.avg < 20: # t_step > 1000 and (t_step % self.num_threads == 0):
                 self.planning()
