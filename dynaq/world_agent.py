@@ -222,6 +222,6 @@ class DynaQWorldAgent(mp.Process):
             finally:
                 self.world_lock.release()
 
-            if self.losses.avg < 50 and (t_step % self.num_threads == 0):
+            if self.losses.avg < 50 and (t_step % 100 == 0):
                 self.planning()
 
