@@ -219,6 +219,6 @@ class DynaQWorldAgent(mp.Process):
             self.learn_world(states, actions, rewards, next_states, dones)
 
 
-            if self.losses.avg < 50 and (t_step % 100 == 0):
+            if self.losses.avg < 50 and (t_step % 1000 == 0):
                 self.planning()
 
