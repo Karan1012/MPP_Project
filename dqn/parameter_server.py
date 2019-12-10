@@ -3,7 +3,7 @@ import torch
 import torch.multiprocessing as mp
 from torch import optim
 
-from parallel_dqn.model import QNetwork
+from dqn.model import QNetwork
 from utils.shared_adam import SharedAdam
 from utils.shared_asgd import SharedASGD
 

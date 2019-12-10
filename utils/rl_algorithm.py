@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 
 
-class Agent(ABC):
+class RLAlgorithm(ABC):
 
     @abstractmethod
     def train(self):

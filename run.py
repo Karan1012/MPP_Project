@@ -1,7 +1,7 @@
 import argparse
 import gym
 
-from utils.agent_factory import AgentFactory
+from utils.rl_algorithm_factory import RLAlgorithmFactory
 
 GAMMA = 0.99  # discount factor
 LR = 5e-4  # learning rate
@@ -16,8 +16,8 @@ def main():
 
     env = gym.make('LunarLander-v2')
 
-    agent = AgentFactory.get_agent(args.agent, env, args.do_render, args.num_threads, GAMMA, LR, args.num_episodes)
-    agent.train()
+    alg = RLAlgorithmFactory.get(args.agent, env, args.do_render, args.num_threads, GAMMA, LR, args.num_episodes)
+    alg.train()
 
     env.close()
 

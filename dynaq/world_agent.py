@@ -7,7 +7,7 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 import torch.optim as optim
 
-from parallel_dqn.replay_buffer import ReplayBuffer
+from dqn.replay_buffer import ReplayBuffer
 from utils.avg import Average
 
 TAU = 1e-3
@@ -18,17 +18,16 @@ BATCH_SIZE = 64  # minibatch size
 
 THETA = 0.0001
 
-class DynaQWorldWorker(mp.Process):
+class DynaQWorldAgent(mp.Process):
 
-    def __init__(self, id, env, state_size, action_size, n_episodes, lr, gamma, update_every,global_network, target_network, world_model, q, lock, num_threads):
-        super(DynaQWorldWorker, self).__init__()
+    def __init__(self, id, state_size, action_size, n_episodes, lr, gamma, global_network, target_network, world_model, q, lock, num_threads):
+        super(DynaQWorldAgent, self).__init__()
         self.id = id
-        self.env = env
         self.state_size = state_size
         self.action_size = action_size
         self.n_episodes = n_episodes
         self.gamma = gamma
-        self.update_every = update_every
+
         self.q = q
         self.l = lock
         self.num_threads = num_threads
