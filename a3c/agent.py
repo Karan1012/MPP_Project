@@ -28,7 +28,7 @@ class A3CAgent(mp.Process):
         self.gamma = gamma
 
         self.global_network = global_network
-        self.global_optimizer = optim.SGD(self.global_network.parameters(), lr=lr)
+        self.global_optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=.5)
 
         self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
 
