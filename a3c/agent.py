@@ -29,7 +29,7 @@ class A3CAgent(mp.Process):
         self.gamma = gamma
 
         self.global_network = global_network
-        self.global_optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=.5)
+        self.global_optimizer = optim.SGD(self.global_network.parameters(), lr=1e-3, momentum=.5)
 
        # self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
 
@@ -55,9 +55,7 @@ class A3CAgent(mp.Process):
             with torch.no_grad():
                 logits, _ = self.global_network.forward(state)
 
-            dist = F.softmax(logits, dim=0)
-
-            return np.argmax(dist.cpu().data.numpy())
+            return np.argmax(logits.cpu().data.numpy())
         else:
             return random.choice(np.arange(self.action_size))
 
@@ -130,8 +128,8 @@ class A3CAgent(mp.Process):
                 state = next_state
                 score += reward
                 if done:
-                    with self.global_episode.get_lock():
-                        self.update_global(trajectory)
+                    #with self.global_episode.get_lock():
+                    self.update_global(trajectory)
                         #self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
