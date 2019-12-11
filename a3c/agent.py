@@ -117,6 +117,7 @@ class A3CAgent(mp.Process):
         eps = self.eps_start  # initialize epsilon
         start_time = time.time()
         for i_episode in range(1, self.n_episodes + 1):
+            self.sync_with_global()
             state = self.env.reset()
             trajectory = []
             score = 0
@@ -131,7 +132,6 @@ class A3CAgent(mp.Process):
                 if done:
                     with self.global_episode.get_lock():
                         self.update_global(trajectory)
-                        self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score

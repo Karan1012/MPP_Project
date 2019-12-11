@@ -207,6 +207,6 @@ class DynaQWorldAgent(mp.Process):
             self.learn_world(states, actions, rewards, next_states, dones)
 
 
-            if self.id == 0 and (t_step % 1000 == 0):
+            if self.id == 0 and (t_step % 2000 == 0):
                 self.planning()
 
