@@ -13,7 +13,7 @@ from a3c.model import ActorCriticNetwork
 
 class A3CAgent(mp.Process):
 
-    def __init__(self, id, env, state_size, action_size, gamma, lr, global_network,
+    def __init__(self, id, env, state_size, action_size, gamma, lr, global_network, global_optimizer,
                  global_episode, n_episodes, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(A3CAgent, self).__init__()
 
@@ -31,7 +31,7 @@ class A3CAgent(mp.Process):
         self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
 
         self.global_network = global_network
-        self.global_optimizer = optim.Adam(self.global_network.parameters(), lr=1e-3) #, momentum=.5)
+        self.global_optimizer = global_optimizer #optim.Adam(self.global_network.parameters(), lr=1e-3) #, momentum=.5)
 
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -46,7 +46,7 @@ class A3CAgent(mp.Process):
         self.eps_decay = eps_decay
 
         # sync local networks with global
-        #self.sync_with_global()
+        self.sync_with_global()
 
     def act(self, state, eps):
         if random.random() > eps:
@@ -54,7 +54,7 @@ class A3CAgent(mp.Process):
             state = torch.FloatTensor(state).to(self.device)
 
             with torch.no_grad():
-                logits, _ = self.local_network.forward(state)
+                logits, _ = self.global_network.forward(state)
 
             return np.argmax(logits.cpu().data.numpy())
         else:
