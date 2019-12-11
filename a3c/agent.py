@@ -31,7 +31,7 @@ class A3CAgent(mp.Process):
         self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
 
         self.global_network = global_network
-        self.global_optimizer = optim.SGD(self.global_network.parameters(), lr=1e-3, momentum=.5)
+        self.global_optimizer = optim.Adam(self.global_network.parameters(), lr=1e-3) #, momentum=.5)
 
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
