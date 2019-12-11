@@ -1,3 +1,4 @@
+import random
 import time
 from collections import deque
 
@@ -46,14 +47,20 @@ class A3CAgent(mp.Process):
         # sync local networks with global
         #self.sync_with_global()
 
-    def act(self, state):
+    def act(self, state, eps):
+        if random.random() > eps:
 
-        state = torch.FloatTensor(state).to(self.device)
-        logits, _ = self.global_network.forward(state)
-        dist = F.softmax(logits, dim=0)
-        probs = Categorical(dist)
+            state = torch.FloatTensor(state).to(self.device)
 
-        return probs.sample().cpu().detach().item()
+            with torch.no_grad():
+                logits, _ = self.global_network.forward(state)
+
+            dist = F.softmax(logits, dim=0)
+
+            return np.argmax(dist.cpu().data.numpy())
+        else:
+            return random.choice(np.arange(self.action_size))
+
 
     def compute_loss(self, trajectory):
         states = torch.FloatTensor([sars[0] for sars in trajectory]).to(self.device)
@@ -116,7 +123,7 @@ class A3CAgent(mp.Process):
             score = 0
             t_step += 1
             for t in range(self.max_t):
-                action = self.act(state)
+                action = self.act(state, eps)
                 next_state, reward, done, _ = self.env.step(action)
 
                 trajectory.append([state, action, reward, next_state, done])
