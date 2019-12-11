@@ -90,18 +90,6 @@ class DynaQWorldAgent(mp.Process):
         for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
             target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
-    def act(self, state, eps=.1):
-        if random.random() > eps:
-            # Turn the state into a tensor
-          #  state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
-
-            with torch.no_grad():
-                action_values = self.global_network(state)  # Make choice based on local network
-
-            return np.argmax(action_values.cpu().data.numpy())
-        else:
-            return random.choice(np.arange(self.action_size))
-
 
     def learn_world(self, states, actions, rewards, next_states, dones):
         act = self.world_model.encode_action(actions)
@@ -219,6 +207,6 @@ class DynaQWorldAgent(mp.Process):
             self.learn_world(states, actions, rewards, next_states, dones)
 
 
-            if self.losses.avg < 50 and (t_step % 1000 == 0):
+            if self.losses.avg < 15 and (t_step % 1000 == 0):
                 self.planning()
 
