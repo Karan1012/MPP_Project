@@ -75,6 +75,7 @@ class DynaQAgent(mp.Process):
 
             # TODO: Better way to do this??
             if self.q[0].empty():
+                experiences = self.local_memory.sample(BATCH_SIZE)
                 self.q[0].put(experiences[0].detach().share_memory_())
                 self.q[1].put(experiences[1].detach().share_memory_())
                 self.q[2].put(experiences[2].detach().share_memory_())
