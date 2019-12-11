@@ -28,10 +28,11 @@ class A3CAgent(mp.Process):
 
         self.gamma = gamma
 
+        self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
+
         self.global_network = global_network
         self.global_optimizer = optim.SGD(self.global_network.parameters(), lr=1e-3, momentum=.5)
 
-       # self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -53,7 +54,7 @@ class A3CAgent(mp.Process):
             state = torch.FloatTensor(state).to(self.device)
 
             with torch.no_grad():
-                logits, _ = self.global_network.forward(state)
+                logits, _ = self.local_network.forward(state)
 
             return np.argmax(logits.cpu().data.numpy())
         else:
@@ -72,7 +73,7 @@ class A3CAgent(mp.Process):
                                         * rewards[j:]) for j in
                               range(rewards.size(0))]  # sorry, not the most readable code.
 
-        logits, values = self.global_network.forward(states)
+        logits, values = self.local_network.forward(states)
         dists = F.softmax(logits, dim=1)
         probs = Categorical(dists)
 
@@ -99,14 +100,14 @@ class A3CAgent(mp.Process):
 
         self.global_optimizer.zero_grad()
         loss.backward()
-        # # propagate local gradients to global parameters
-        # for local_params, global_params in zip(self.local_network.parameters(), self.global_network.parameters()):
-        #     global_params._grad = local_params._grad
+        # propagate local gradients to global parameters
+        for local_params, global_params in zip(self.local_network.parameters(), self.global_network.parameters()):
+            global_params._grad = local_params._grad
 
         self.global_optimizer.step()
 
-    # def sync_with_global(self):
-    #     self.local_network.load_state_dict(self.global_network.state_dict())
+    def sync_with_global(self):
+        self.local_network.load_state_dict(self.global_network.state_dict())
 
 
     def run(self):
@@ -128,9 +129,9 @@ class A3CAgent(mp.Process):
                 state = next_state
                 score += reward
                 if done:
-                    #with self.global_episode.get_lock():
-                    self.update_global(trajectory)
-                        #self.sync_with_global()
+                    with self.global_episode.get_lock():
+                        self.update_global(trajectory)
+                        self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
