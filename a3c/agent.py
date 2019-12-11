@@ -123,8 +123,8 @@ class A3CAgent(mp.Process):
                 state = next_state
                 score += reward
                 if done:
-                    #with self.global_episode.get_lock():
-                    self.update_global(trajectory)
+                    with self.global_episode.get_lock():
+                        self.update_global(trajectory)
                         #self.sync_with_global()
                     break
             scores_window.append(score)  # save most recent score
