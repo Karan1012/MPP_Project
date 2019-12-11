@@ -5,13 +5,14 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 import torch.nn.functional as F
+from torch import optim
 from torch.distributions import Categorical
 
 from a3c.model import ActorCriticNetwork
 
 class A3CAgent(mp.Process):
 
-    def __init__(self, id, env, state_size, action_size, gamma, lr, global_network,  global_optimizer,
+    def __init__(self, id, env, state_size, action_size, gamma, lr, global_network,
                  global_episode, n_episodes, max_t=1000, eps_start=1.0, eps_end=0.01, eps_decay=0.995):
         super(A3CAgent, self).__init__()
 
@@ -27,7 +28,7 @@ class A3CAgent(mp.Process):
         self.gamma = gamma
 
         self.global_network = global_network
-        self.global_optimizer = global_optimizer
+        self.global_optimizer = optim.SGD(self.global_network.parameters(), lr=lr)
 
         self.local_network = ActorCriticNetwork(self.state_size, self.action_size)
 
@@ -106,7 +107,7 @@ class A3CAgent(mp.Process):
     def run(self):
         t_step = 0
         scores = []
-        scores_window = deque(maxlen=20)  # last 100 scores
+        scores_window = deque(maxlen=100)  # last 100 scores
         eps = self.eps_start  # initialize epsilon
         start_time = time.time()
         for i_episode in range(1, self.n_episodes + 1):

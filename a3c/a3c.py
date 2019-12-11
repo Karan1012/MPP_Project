@@ -19,9 +19,9 @@ class A3C(RLAlgorithm):
 
         self.global_network = ActorCriticNetwork(state_size, action_size)
         self.global_network.share_memory()
-        self.global_optimizer = optim.Adam(self.global_network.parameters(), lr=lr)
+       # self.global_optimizer = optim.Adam(self.global_network.parameters(), lr=lr)
 
-        self.agents = [A3CAgent(i, env, state_size, action_size, self.gamma, lr, self.global_network, self.global_optimizer,
+        self.agents = [A3CAgent(i, env, state_size, action_size, self.gamma, lr, self.global_network,
                                         self.global_episode,  self.GLOBAL_MAX_EPISODE) for i in range(num_threads)]
 
     def train(self):
