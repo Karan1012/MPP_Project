@@ -165,5 +165,5 @@ class DynaQAgent(mp.Process):
                     self.scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
             if np.mean(self.scores_window) >= 200.0:
                 print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
-                                                                                             np.mean(scores_window)))
+                                                                                             np.mean(self.scores_window)))
                 break
