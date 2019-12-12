@@ -48,6 +48,8 @@ class DynaQAgent(mp.Process):
 
         self.optimizer = optim.SGD(self.global_network.parameters(), lr=lr, momentum=.5)
 
+        self.scores_window = deque(maxlen=100)  # last 100 scores
+
 
     def act(self, state, eps=0.):
         if random.random() > eps:
@@ -74,7 +76,7 @@ class DynaQAgent(mp.Process):
             self.learn(experiences)
 
             # TODO: Better way to do this??
-            if self.q[0].empty():
+            if self.q[0].empty() and np.mean(self.scores_window) < 180:
                 experiences = self.local_memory.sample(BATCH_SIZE)
                 self.q[0].put(experiences[0].detach().share_memory_())
                 self.q[1].put(experiences[1].detach().share_memory_())
@@ -134,7 +136,7 @@ class DynaQAgent(mp.Process):
 
     def run(self):
         scores = []
-        scores_window = deque(maxlen=100)  # last 100 scores
+
         eps = self.eps_start  # initialize epsilon
         start_time = time.time()
         for i_episode in range(1, self.n_episodes + 1):
@@ -151,17 +153,17 @@ class DynaQAgent(mp.Process):
                 score += reward
                 if done:
                     break
-            scores_window.append(score)  # save most recent score
+            self.scores_window.append(score)  # save most recent score
             scores.append(score)  # save most recent score
             eps = max(self.eps_end, self.eps_decay * eps)  # decrease epsilon
             elapsed_time = time.time() - start_time
             if self.id == 0:
                 print('\rThread: {}, Episode {}\tAverage Score: {:.2f}, Runtime: '.format(self.id, i_episode, np.mean(
-                    scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
+                    self.scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
             if i_episode % 100 == 0:
                 print('\rThread: {}, Episode {}\tAverage Score: {:.2f}, Runtime: '.format(self.id, i_episode, np.mean(
-                    scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
-            if np.mean(scores_window) >= 200.0:
+                    self.scores_window)) + time.strftime("%H:%M:%S", time.gmtime(elapsed_time)))
+            if np.mean(self.scores_window) >= 200.0:
                 print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}'.format(i_episode - 100,
                                                                                              np.mean(scores_window)))
                 break
