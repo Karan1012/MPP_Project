@@ -11,7 +11,7 @@ import torch.optim as optim
 from dqn.replay_buffer import ReplayBuffer
 import torch.multiprocessing as mp
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 BUFFER_SIZE = int(1e5)  # replay buffer size
