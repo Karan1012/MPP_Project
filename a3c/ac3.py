@@ -4,6 +4,7 @@ import tensorflow as tf
 import numpy as np
 import gym
 import os
+import argparse
 import shutil
 import matplotlib.pyplot as plt
 
@@ -174,6 +175,10 @@ class Worker(object):
                     break
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Process arguments')
+    parser.add_argument('--num-threads', type=int, default=4, help='Number of threads to use')
+    args = parser.parse_args()
+    N_WORKERS = args.num_threads
     SESS = tf.Session()
     print('Max number of threads that can be choosed for this machine is %i'%multiprocessing.cpu_count())
     with tf.device("/cpu:0"):
